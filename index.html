@@ -88,13 +88,13 @@
                     </div>
                     <div>
                         <div class="flex items-center gap-2">
-                            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900">E-Presensi Live</h1>
+                            <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900">E-Presensi Live PKM Kalibunder</h1>
                             <span id="connection-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
                                 <span class="w-2 h-2 rounded-full bg-amber-500 live-dot"></span>
                                 <span id="connection-text">Memuat...</span>
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 hidden sm:block">Sistem Informasi Ketersediaan Petugas Setiap Unit Layanan</p>
+                        <p class="text-xs text-slate-500 hidden sm:block">Sistem Informasi Ketersediaan Petugas Unit Layanan</p>
                     </div>
                 </div>
 
@@ -994,7 +994,7 @@
             if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
                 badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
                 badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-emerald-500 live-dot';
-                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Data Absensi 1.4';
+                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Absensi 1.4';
                 settingsDesc.textContent = 'Terhubung langsung ke Google Spreadsheet ID: ' + SPREADSHEET_ID;
             } else {
                 badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
@@ -1069,6 +1069,20 @@
             return (waktuPulang !== '' && waktuPulang !== '-') || status.includes('pulang');
         }
 
+        function isDinasLuarRow(row) {
+            const resolved = (row._resolvedRoom || '').toLowerCase();
+            const shiftCode = (row['Shift'] || '').toLowerCase();
+            const shiftKet = (row._shiftDetail?.['Keterangan'] || '').toLowerCase();
+            const status = (row['Status'] || '').toLowerCase();
+            return (
+                resolved.includes('dinas luar') ||
+                shiftCode === 'dl' ||
+                shiftCode.includes('dinas luar') ||
+                shiftKet.includes('dinas luar') ||
+                status.includes('dinas luar')
+            );
+        }
+
         function processAndRenderData(absensiRows, shiftsRows) {
             // Bangun peta kode Shift dari sheet Shifts
             const shiftsMap = {};
@@ -1094,7 +1108,7 @@
                     resolvedRoom = shiftKet || shiftCode || 'Keterangan Lainnya';
                 }
 
-                return {
+                const mappedRow = {
                     ...row,
                     _isoDate: normalizeDateToISO(row['Tanggal']),
                     _isPulang: isEmployeePulang(row),
@@ -1104,6 +1118,8 @@
                     _fotoDatangUrl: resolveDriveImageUrl(row['Foto Datang']),
                     _fotoPulangUrl: resolveDriveImageUrl(row['Foto Pulang'] || row['Foto Datang'])
                 };
+                mappedRow._isDinasLuar = isDinasLuarRow(mappedRow);
+                return mappedRow;
             });
 
             applyDateFilterAndRender();
@@ -1127,7 +1143,7 @@
                         resolvedRoom = shiftKet || shiftCode || 'Keterangan Lainnya';
                     }
 
-                    return {
+                    const mappedRow = {
                         ...row,
                         _isoDate: row['Tanggal'] === yesterdayDate ? yesterdayDate : targetDate,
                         _isPulang: isEmployeePulang(row),
@@ -1137,6 +1153,8 @@
                         _fotoDatangUrl: resolveDriveImageUrl(row['Foto Datang']),
                         _fotoPulangUrl: resolveDriveImageUrl(row['Foto Pulang'] || row['Foto Datang'])
                     };
+                    mappedRow._isDinasLuar = isDinasLuarRow(mappedRow);
+                    return mappedRow;
                 });
             }
 
@@ -1206,18 +1224,28 @@
 
             data.forEach(row => {
                 const roomName = row._resolvedRoom;
+                const isDinasLuar = Boolean(row._isDinasLuar);
                 if (!roomGroups[roomName]) {
                     roomGroups[roomName] = {
                         name: roomName,
                         isBottomCategory: row._isBottomCategory,
+                        isDinasLuar: isDinasLuar,
                         hadirCount: 0,
                         pulangCount: 0,
+                        totalCount: 0,
                         telatCount: 0,
                         avatars: []
                     };
-                } else if (!row._isBottomCategory) {
-                    roomGroups[roomName].isBottomCategory = false;
+                } else {
+                    if (!row._isBottomCategory) {
+                        roomGroups[roomName].isBottomCategory = false;
+                    }
+                    if (isDinasLuar) {
+                        roomGroups[roomName].isDinasLuar = true;
+                    }
                 }
+
+                roomGroups[roomName].totalCount++;
 
                 const telatMnt = parseInt(row['Terlambat (Mnt)'] || '0', 10);
                 if (telatMnt > 0) {
@@ -1226,10 +1254,14 @@
                 }
 
                 if (row._isPulang) {
-                    totalPulang++;
+                    if (!isDinasLuar) {
+                        totalPulang++;
+                    }
                     roomGroups[roomName].pulangCount++;
                 } else {
-                    totalHadir++;
+                    if (!isDinasLuar) {
+                        totalHadir++;
+                    }
                     roomGroups[roomName].hadirCount++;
                     if (roomGroups[roomName].avatars.length < 4) {
                         roomGroups[roomName].avatars.push({
@@ -1320,6 +1352,22 @@
                         return `<img src="${src}" onerror="this.onerror=null;this.src='${fallback}'" alt="${av.name}" title="${av.name}" class="w-7 h-7 rounded-full object-cover ring-2 ring-white bg-slate-200">`;
                     }).join('');
 
+                    const isDinasLuarRoom = room.isDinasLuar || room.name.toLowerCase().includes('dinas luar');
+                    const statusCountersHtml = isDinasLuarRoom
+                        ? `<div class="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-100">
+                               <span class="text-[11px] font-semibold text-amber-800 block">Petugas di Luar Kantor</span>
+                           </div>`
+                        : `<div class="flex items-center gap-3">
+                               <div class="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-100">
+                                   <span class="text-[10px] font-semibold text-emerald-700 block">Hadir</span>
+                                   <span class="text-sm font-extrabold text-emerald-700">${room.hadirCount}</span>
+                               </div>
+                               <div class="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-100">
+                                   <span class="text-[10px] font-semibold text-rose-700 block">Pulang</span>
+                                   <span class="text-sm font-extrabold text-rose-700">${room.pulangCount}</span>
+                               </div>
+                           </div>`;
+
                     cardsHtml += `
                         <div onclick="selectRoomAndSlide('${escapeHtml(room.name)}')" class="group cursor-pointer bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
                             <div>
@@ -1333,21 +1381,12 @@
                                 </div>
                                 <h3 class="text-base sm:text-lg font-bold text-slate-900 group-hover:text-brand-700 transition line-clamp-2">${room.name}</h3>
                                 <p class="text-xs text-slate-500 mt-1">
-                                    Total Tercatat: <span class="font-semibold text-slate-700">${room.hadirCount + room.pulangCount} Petugas</span>
+                                    Total Tercatat: <span class="font-semibold text-slate-700">${room.totalCount} Petugas</span>
                                 </p>
                             </div>
 
                             <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
-                                <div class="flex items-center gap-3">
-                                    <div class="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-100">
-                                        <span class="text-[10px] font-semibold text-emerald-700 block">Hadir</span>
-                                        <span class="text-sm font-extrabold text-emerald-700">${room.hadirCount}</span>
-                                    </div>
-                                    <div class="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-100">
-                                        <span class="text-[10px] font-semibold text-rose-700 block">Pulang</span>
-                                        <span class="text-sm font-extrabold text-rose-700">${room.pulangCount}</span>
-                                    </div>
-                                </div>
+                                ${statusCountersHtml}
                                 <span class="w-9 h-9 rounded-full bg-slate-100 group-hover:bg-brand-600 text-slate-600 group-hover:text-white flex items-center justify-center transition">
                                     <i class="fa-solid fa-chevron-right text-xs"></i>
                                 </span>
