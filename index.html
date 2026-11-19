@@ -1,0 +1,1657 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard Daftar Hadir Hari Ini</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.95); opacity: 0.8; }
+      70% { transform: scale(1.6); opacity: 0; }
+      100% { transform: scale(1.6); opacity: 0; }
+    }
+
+    .live-dot::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      border-radius: 9999px;
+      background-color: #10b981;
+      animation: pulse-ring 1.8s infinite;
+    }
+
+    @keyframes shake {
+      0%, 100% { transform: translateX(0); }
+      20%, 60% { transform: translateX(-6px); }
+      40%, 80% { transform: translateX(6px); }
+    }
+    .animate-shake {
+      animation: shake 0.35s ease-in-out;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col bg-slate-50 text-slate-900 selection:bg-blue-600 selection:text-white">
+
+  <!-- HEADER -->
+  <header class="sticky top-0 z-30 bg-white/90 backdrop-blur-md border-b border-slate-200/80 shadow-2xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <!-- Brand & Live Clock -->
+        <div class="flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3">
+            <div class="w-10 h-10 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-blue-600/20 shrink-0">
+              <i data-lucide="clipboard-check" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-slate-900">Daftar Hadir Hari Ini</h1>
+                <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                  <span class="relative w-2 h-2 rounded-full bg-emerald-500 live-dot"></span>
+                  Live
+                </span>
+              </div>
+              <p id="liveDateTime" class="text-xs text-slate-500 font-medium mt-0.5">Memuat waktu...</p>
+            </div>
+          </div>
+
+          <!-- Mobile Action Buttons -->
+          <div class="flex items-center gap-1.5 md:hidden">
+            <button onclick="fetchSpreadsheetData(true)" title="Sinkronkan Ulang" class="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition active:scale-95">
+              <i data-lucide="refresh-cw" id="refreshIconMobile" class="w-4 h-4"></i>
+            </button>
+            <button onclick="handleAdminAccessClick()" title="Akses Admin & Sumber Sheet" class="p-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white transition active:scale-95 relative">
+              <i data-lucide="shield-check" id="adminIconMobile" class="w-4 h-4 text-blue-400"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- Global Summary Pills & Desktop Controls -->
+        <div class="flex flex-wrap items-center justify-between md:justify-end gap-2 sm:gap-3">
+          <div class="flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-xl border border-slate-200/60 text-xs overflow-x-auto no-scrollbar">
+            <span class="text-slate-500">Ruangan:</span>
+            <span id="statTotalRooms" class="font-bold text-slate-900">0</span>
+            <span class="text-slate-300">|</span>
+            <span class="text-slate-500">Hadir:</span>
+            <span id="statTotalPresent" class="font-bold text-emerald-600">0</span>
+            <span class="text-slate-300">|</span>
+            <span class="text-slate-500">Pulang:</span>
+            <span id="statTotalOut" class="font-bold text-amber-600">0</span>
+          </div>
+
+          <div class="hidden md:flex items-center gap-2">
+            <button onclick="fetchSpreadsheetData(true)" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-xs font-semibold shadow-sm transition active:scale-95">
+              <i data-lucide="refresh-cw" id="refreshIconDesktop" class="w-3.5 h-3.5 text-blue-600"></i>
+              <span>Sinkronkan</span>
+            </button>
+            <button onclick="handleAdminAccessClick()" id="adminAccessBtnDesktop" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition active:scale-95">
+              <i data-lucide="lock" id="adminIconDesktop" class="w-3.5 h-3.5 text-blue-400"></i>
+              <span id="adminBtnLabelDesktop">Akses Admin</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- DATA SOURCE INFO BANNER -->
+  <div id="fallbackBanner" class="hidden bg-amber-50 border-b border-amber-200/80 text-amber-900 text-xs">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-2 flex flex-wrap items-center justify-between gap-2">
+      <div class="flex items-center gap-2">
+        <i data-lucide="info" class="w-4 h-4 text-amber-600 shrink-0"></i>
+        <span>Menampilkan <strong>data simulasi</strong> karena Google Spreadsheet tidak dapat diakses langsung oleh browser. Pastikan akses sheet publik atau atur URL Web App di mode Admin.</span>
+      </div>
+      <button onclick="handleAdminAccessClick()" class="font-semibold underline hover:text-amber-700 shrink-0">Konfigurasi Sheet</button>
+    </div>
+  </div>
+
+  <!-- MAIN MASTER SLIDER VIEWPORT -->
+  <main class="flex-1 overflow-x-hidden">
+    <div id="masterSliderTrack" class="flex w-[200%] transition-transform duration-500 ease-out">
+
+      <!-- =================================================================== -->
+      <!-- MASTER SLIDE 1: DAFTAR RUANGAN / LOKASI MASUK                       -->
+      <!-- =================================================================== -->
+      <section class="w-1/2 shrink-0 px-4 sm:px-6 lg:px-8 py-6">
+        <div class="max-w-7xl mx-auto space-y-6">
+
+          <!-- Hero Filter Bar -->
+          <div class="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-xs">
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div>
+                <span class="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-blue-600 mb-1">
+                  <i data-lucide="building-2" class="w-3.5 h-3.5"></i>
+                  Slide 1 • Lokasi Masuk
+                </span>
+                <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900">Pilih Ruangan / Pos Tugas</h2>
+                <p class="text-xs sm:text-sm text-slate-500 mt-1">Klik salah satu ruangan di bawah untuk melihat daftar nama petugas yang hadir, kartu foto petugas, dan status pulang.</p>
+              </div>
+
+              <!-- Search & Shift Filter Controls -->
+              <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5">
+                <div class="relative min-w-[220px]">
+                  <i data-lucide="search" class="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+                  <input
+                    type="text"
+                    id="searchInput"
+                    oninput="renderRoomsGrid()"
+                    placeholder="Cari ruangan atau nama..."
+                    class="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs sm:text-sm text-slate-800 placeholder:text-slate-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                  />
+                </div>
+
+                <select
+                  id="shiftFilterSelect"
+                  onchange="renderRoomsGrid()"
+                  class="px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs sm:text-sm font-medium text-slate-700 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+                >
+                  <option value="ALL">Semua Shift</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          <!-- Loading Skeleton -->
+          <div id="loadingGrid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+            <div class="h-44 rounded-3xl bg-white border border-slate-200/70 p-6 animate-pulse flex flex-col justify-between">
+              <div class="h-5 w-1/2 bg-slate-200 rounded-lg"></div>
+              <div class="h-8 w-1/3 bg-slate-100 rounded-xl"></div>
+              <div class="h-4 w-3/4 bg-slate-100 rounded-lg"></div>
+            </div>
+            <div class="h-44 rounded-3xl bg-white border border-slate-200/70 p-6 animate-pulse flex flex-col justify-between">
+              <div class="h-5 w-2/3 bg-slate-200 rounded-lg"></div>
+              <div class="h-8 w-1/3 bg-slate-100 rounded-xl"></div>
+              <div class="h-4 w-2/3 bg-slate-100 rounded-lg"></div>
+            </div>
+            <div class="h-44 rounded-3xl bg-white border border-slate-200/70 p-6 animate-pulse flex flex-col justify-between">
+              <div class="h-5 w-1/2 bg-slate-200 rounded-lg"></div>
+              <div class="h-8 w-1/3 bg-slate-100 rounded-xl"></div>
+              <div class="h-4 w-3/4 bg-slate-100 rounded-lg"></div>
+            </div>
+          </div>
+
+          <!-- Rooms Grid Container -->
+          <div id="roomsGrid" class="hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5"></div>
+
+          <!-- Empty State -->
+          <div id="emptyRoomsState" class="hidden bg-white rounded-3xl border border-slate-200 p-10 text-center">
+            <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="folder-search" class="w-7 h-7"></i>
+            </div>
+            <h3 class="text-base font-bold text-slate-900">Ruangan atau petugas tidak ditemukan</h3>
+            <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Coba ubah kata kunci pencarian atau pilih filter shift lainnya.</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- =================================================================== -->
+      <!-- MASTER SLIDE 2: DETAIL RUANGAN (3 SUB-SLIDES HORIZONTAL)            -->
+      <!-- =================================================================== -->
+      <section class="w-1/2 shrink-0 px-4 sm:px-6 lg:px-8 py-6">
+        <div class="max-w-7xl mx-auto space-y-5">
+
+          <!-- Top Navigation & Room Header -->
+          <div class="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-xs">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <button onclick="goBackToRooms()" class="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold transition active:scale-95 shrink-0">
+                  <i data-lucide="arrow-left" class="w-4 h-4"></i>
+                  <span>Daftar Ruangan</span>
+                </button>
+                <div class="min-w-0">
+                  <div class="flex items-center gap-2 text-xs text-blue-600 font-semibold">
+                    <i data-lucide="map-pin" class="w-3.5 h-3.5 shrink-0"></i>
+                    <span>Lokasi Masuk</span>
+                  </div>
+                  <h2 id="detailRoomTitle" class="text-lg sm:text-2xl font-extrabold text-slate-900 truncate">Nama Ruangan</h2>
+                </div>
+              </div>
+
+              <!-- Room Quick Counters & Slide Arrows -->
+              <div class="flex items-center justify-between sm:justify-end gap-3">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="px-2.5 py-1.5 rounded-xl bg-emerald-50 text-emerald-700 font-bold border border-emerald-200/60">
+                    Hadir: <span id="detailActiveCount">0</span>
+                  </span>
+                  <span class="px-2.5 py-1.5 rounded-xl bg-amber-50 text-amber-700 font-bold border border-amber-200/60">
+                    Pulang: <span id="detailOutCount">0</span>
+                  </span>
+                </div>
+
+                <div class="flex items-center gap-1.5">
+                  <button onclick="stepDetailSlide(-1)" id="prevSubSlideBtn" title="Slide Sebelumnya (Kiri)" class="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition">
+                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                  </button>
+                  <button onclick="stepDetailSlide(1)" id="nextSubSlideBtn" title="Slide Berikutnya (Kanan)" class="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 transition">
+                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 3-Slide Navigation Pills -->
+            <div class="mt-5 pt-4 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div class="grid grid-cols-3 gap-1.5 bg-slate-100 p-1.5 rounded-2xl w-full sm:w-auto">
+                <button onclick="setDetailSlide(0)" id="tabSubSlide0" class="px-3 py-2 rounded-xl text-xs font-bold transition-all bg-white text-blue-700 shadow-xs flex items-center justify-center gap-1.5">
+                  <i data-lucide="list" class="w-3.5 h-3.5"></i>
+                  <span>1. Daftar Hadir</span>
+                </button>
+                <button onclick="setDetailSlide(1)" id="tabSubSlide1" class="px-3 py-2 rounded-xl text-xs font-bold transition-all text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5">
+                  <i data-lucide="id-card" class="w-3.5 h-3.5"></i>
+                  <span>2. Kartu Petugas</span>
+                </button>
+                <button onclick="setDetailSlide(2)" id="tabSubSlide2" class="px-3 py-2 rounded-xl text-xs font-bold transition-all text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5">
+                  <i data-lucide="log-out" class="w-3.5 h-3.5"></i>
+                  <span>3. Status Pulang</span>
+                </button>
+              </div>
+
+              <p class="text-[11px] text-slate-400 flex items-center gap-1.5">
+                <i data-lucide="move-horizontal" class="w-3.5 h-3.5 text-slate-400"></i>
+                <span>Geser layar ke kiri / kanan atau gunakan tombol panah</span>
+              </p>
+            </div>
+          </div>
+
+          <!-- 3-SLIDE HORIZONTAL VIEWPORT -->
+          <div id="detailSwipeArea" class="overflow-hidden rounded-3xl">
+            <div id="detailSliderTrack" class="flex w-[300%] transition-transform duration-300 ease-out items-start">
+
+              <!-- SUB-SLIDE 1: DAFTAR NAMA YANG HADIR (AKTIF) -->
+              <div class="w-1/3 shrink-0 pr-0">
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-xs overflow-hidden">
+                  <div class="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+                    <div>
+                      <h3 class="text-sm font-bold text-slate-900">Daftar Petugas Sedang Hadir (Aktif)</h3>
+                      <p class="text-xs text-slate-500">Menampilkan petugas yang masih bertugas di ruangan ini</p>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700">Slide 1 / 3</span>
+                  </div>
+                  <div id="activeListContainer" class="overflow-x-auto"></div>
+                </div>
+              </div>
+
+              <!-- SUB-SLIDE 2: KARTU PETUGAS LENGKAP FOTO & JAM KEDATANGAN -->
+              <div class="w-1/3 shrink-0">
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
+                  <div class="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 class="text-sm font-bold text-slate-900">Kartu Profil Petugas Hadir</h3>
+                      <p class="text-xs text-slate-500">Foto absen datang, nama petugas, shift, dan jam kedatangan</p>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-indigo-50 text-indigo-700">Slide 2 / 3</span>
+                  </div>
+                  <div id="activeCardsContainer" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+                </div>
+              </div>
+
+              <!-- SUB-SLIDE 3: DAFTAR KARYAWAN STATUS PULANG -->
+              <div class="w-1/3 shrink-0">
+                <div class="bg-white rounded-3xl border border-slate-200/80 shadow-xs p-5 sm:p-6">
+                  <div class="flex items-center justify-between mb-5">
+                    <div>
+                      <h3 class="text-sm font-bold text-slate-900">Daftar Karyawan Status Pulang</h3>
+                      <p class="text-xs text-slate-500">Hanya menampilkan karyawan yang telah tercatat pulang (petugas aktif disembunyikan)</p>
+                    </div>
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700">Slide 3 / 3</span>
+                  </div>
+                  <div id="checkedOutContainer"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- PHOTO LIGHTBOX MODAL -->
+  <div id="photoLightboxModal" onclick="if(event.target === this) closePhotoModal()" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl max-w-md w-full border border-slate-200 shadow-2xl overflow-hidden">
+      <div class="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-3">
+        <div class="min-w-0">
+          <span id="lightboxBadge" class="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700">Foto Absen Datang</span>
+          <h3 id="lightboxName" class="text-base font-bold text-slate-900 truncate mt-1">Nama Petugas</h3>
+          <p id="lightboxSub" class="text-xs text-slate-500 truncate">Ruangan</p>
+        </div>
+        <button onclick="closePhotoModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition shrink-0">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-4 sm:p-5 bg-slate-50 flex flex-col items-center">
+        <div class="w-full aspect-square max-h-[360px] rounded-2xl overflow-hidden bg-slate-200 border border-slate-200/80 flex items-center justify-center">
+          <img id="lightboxImage" src="" alt="Foto Absensi" onerror="handleImageError(this)" class="w-full h-full object-cover" />
+        </div>
+
+        <div id="lightboxSwitchTabs" class="mt-4 grid grid-cols-2 gap-2 w-full">
+          <button type="button" id="btnLightboxDatang" onclick="switchLightboxPhoto('datang')" class="py-2 px-3 rounded-xl text-xs font-bold transition border">
+            Foto Datang (Kolom N)
+          </button>
+          <button type="button" id="btnLightboxPulang" onclick="switchLightboxPhoto('pulang')" class="py-2 px-3 rounded-xl text-xs font-bold transition border">
+            Foto Pulang (Kolom O)
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ADMIN PASSWORD VERIFICATION MODAL -->
+  <div id="adminLoginModal" onclick="if(event.target === this) closeAdminLoginModal()" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-950/70 backdrop-blur-sm p-4">
+    <div id="adminLoginCard" class="bg-white rounded-3xl max-w-sm w-full border border-slate-200 shadow-2xl overflow-hidden">
+      <div class="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-slate-900 text-blue-400 flex items-center justify-center shadow-sm">
+            <i data-lucide="shield-lock" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-base font-bold text-slate-900">Verifikasi Akses Admin</h3>
+            <p class="text-xs text-slate-500">Masukkan password untuk pengaturan sheet</p>
+          </div>
+        </div>
+        <button onclick="closeAdminLoginModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form onsubmit="submitAdminPassword(event)" class="p-5 sm:p-6 space-y-4">
+        <div>
+          <label for="adminPasswordInput" class="block text-xs font-semibold text-slate-700 mb-1.5">Password Admin</label>
+          <div class="relative">
+            <input
+              type="password"
+              id="adminPasswordInput"
+              autocomplete="current-password"
+              placeholder="Masukkan password admin..."
+              oninput="clearAdminLoginError()"
+              class="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-mono tracking-wider text-slate-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition"
+            />
+            <button type="button" onclick="toggleAdminPasswordVisibility()" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1.5 text-slate-400 hover:text-slate-700 rounded-lg transition" title="Tampilkan / Sembunyikan Password">
+              <i data-lucide="eye" id="adminEyeIcon" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p id="adminLoginError" class="hidden mt-2 text-xs font-semibold text-rose-600 flex items-center gap-1.5">
+            <i data-lucide="alert-circle" class="w-3.5 h-3.5 shrink-0"></i>
+            <span>Password Admin salah!</span>
+          </p>
+        </div>
+
+        <div class="pt-1 flex items-center justify-end gap-2">
+          <button type="button" onclick="closeAdminLoginModal()" class="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 transition">
+            Batal
+          </button>
+          <button type="submit" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white shadow-sm transition active:scale-95">
+            <i data-lucide="unlock" class="w-3.5 h-3.5 text-blue-400"></i>
+            <span>Masuk Admin</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SETTINGS / SPREADSHEET CONFIGURATION MODAL -->
+  <div id="settingsModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
+    <div class="bg-white rounded-3xl max-w-lg w-full border border-slate-200 shadow-2xl overflow-hidden">
+      <div class="p-5 sm:p-6 border-b border-slate-100 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
+            <i data-lucide="sheet" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <div class="flex items-center gap-2">
+              <h3 class="text-base font-bold text-slate-900">Pengaturan Sumber Sheet</h3>
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">Mode Admin</span>
+            </div>
+            <p class="text-xs text-slate-500">Sinkronisasi Sheet Absensi &amp; Sheet Shifts</p>
+          </div>
+        </div>
+        <button onclick="closeSettingsModal()" class="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <div class="p-5 sm:p-6 space-y-4 text-sm">
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1.5">Spreadsheet ID</label>
+          <input type="text" id="inputSheetId" value="1CLMsyPDi6Vp49M8Mm2JfURD7VkG7qznmkcKcWvL9Ibg" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Nama Sheet Absensi</label>
+            <input type="text" id="inputSheetAbsensi" value="Absensi" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1.5">Nama Sheet Shifts</label>
+            <input type="text" id="inputSheetShifts" value="Shifts" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500" />
+          </div>
+        </div>
+
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 mb-1.5">URL Google Apps Script Web App (Opsional)</label>
+          <input type="url" id="inputAppsScriptUrl" placeholder="https://script.google.com/macros/s/.../exec" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:bg-white focus:outline-none focus:border-blue-500" />
+        </div>
+
+        <div class="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
+          <div>
+            <p class="text-xs font-bold text-slate-800">Cakupan Tanggal Data</p>
+            <p id="adminDateScopeLabel" class="text-[11px] text-slate-500">Filter: Hanya Hari Ini</p>
+          </div>
+          <button type="button" onclick="toggleDateScope()" class="px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition">
+            Ubah Filter Tanggal
+          </button>
+        </div>
+
+        <div class="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100">
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="resetDefaultSheetConfig()" class="px-3 py-2 rounded-xl text-xs font-semibold text-slate-500 hover:bg-slate-100 transition">
+              Reset Default
+            </button>
+            <button type="button" onclick="logoutAdminSession()" class="px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 hover:bg-rose-50 transition">
+              Keluar Admin
+            </button>
+          </div>
+          <button type="button" onclick="saveSettingsAndSync()" class="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition active:scale-95">
+            <i data-lucide="check" class="w-4 h-4"></i>
+            <span>Simpan &amp; Sinkronkan</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toastContainer" class="fixed bottom-4 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- SCRIPT UTAMA APLIKASI -->
+  <script>
+    // =========================================================================
+    // 0. GLOBAL IMAGE FALLBACK HANDLER (Mencegah ReferenceError saat onerror)
+    // =========================================================================
+    window.handleImageError = function(img) {
+      if (!img) return;
+      const stage = parseInt(img.dataset.errStage || '0', 10);
+
+      if (stage === 0 && img.dataset.fallback1 && img.src !== img.dataset.fallback1) {
+        img.dataset.errStage = '1';
+        img.src = img.dataset.fallback1;
+      } else if (stage <= 1 && img.dataset.fallback2 && img.src !== img.dataset.fallback2) {
+        img.dataset.errStage = '2';
+        img.src = img.dataset.fallback2;
+      } else {
+        img.onerror = null;
+        const name = (img.alt || 'P').trim();
+        const initials = name
+          .split(/\s+/)
+          .slice(0, 2)
+          .map(w => w[0] || '')
+          .join('')
+          .toUpperCase() || 'P';
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="#dbeafe"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="56" fill="#1d4ed8">${initials}</text></svg>`;
+        img.src = 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+      }
+    };
+
+    // =========================================================================
+    // 1. KONFIGURASI & STATE GLOBAL
+    // =========================================================================
+    const CONFIG = {
+      spreadsheetId: '1CLMsyPDi6Vp49M8Mm2JfURD7VkG7qznmkcKcWvL9Ibg',
+      sheetAbsensi: 'Absensi',
+      sheetShifts: 'Shifts',
+      appsScriptUrl: '',
+      adminPassword: '300603',
+      adminSessionKey: 'absensi_admin_authenticated_v1'
+    };
+
+    const APP_STATE = {
+      masterSlide: 0,         // 0: Daftar Ruangan, 1: Detail Ruangan
+      detailSlide: 0,         // 0: Daftar Hadir, 1: Kartu Petugas, 2: Status Pulang
+      selectedRoom: null,     // Nama 'Lokasi Masuk' yang diklik
+      onlyToday: true,        // Filter tanggal hari ini
+      usingFallback: false,   // Status apakah menggunakan data fallback/demo
+      isAdminAuthenticated: sessionStorage.getItem('absensi_admin_authenticated_v1') === 'true',
+      shiftsMap: {},          // Map Kode Shift -> Detail Object dari Sheet Shifts
+      allAttendance: [],      // Semua data dari Sheet Absensi
+      filteredAttendance: []  // Data absensi yang sesuai filter tanggal
+    };
+
+    let ACTIVE_LIGHTBOX_PERSON = null;
+
+    // =========================================================================
+    // 2. HELPER UTILITIES (ESCAPE, FOTO GOOGLE DRIVE, TANGGAL, TOAST)
+    // =========================================================================
+    function escapeHTML(str) {
+      return String(str ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+
+    function escapeQuotes(str) {
+      return String(str ?? '').replace(/\\/g, '\\\\').replace(/'/g, "\\'");
+    }
+
+    function buildInitialsSvg(name) {
+      const initials = (String(name || 'P').trim().split(/\s+/).slice(0, 2).map(w => w[0] || '').join('').toUpperCase()) || 'P';
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"><rect width="160" height="160" fill="#dbeafe"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" font-family="Inter, sans-serif" font-weight="700" font-size="56" fill="#1d4ed8">${initials}</text></svg>`;
+      return 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg);
+    }
+
+    function resolvePhotoUrl(rawUrl, personName) {
+      const placeholder = buildInitialsSvg(personName);
+      const url = String(rawUrl || '').trim();
+      if (!url || url === '-' || url.toLowerCase() === 'null' || url.toLowerCase() === 'undefined') {
+        return {
+          hasUrl: false,
+          primary: placeholder,
+          fallback1: placeholder,
+          fallback2: placeholder
+        };
+      }
+
+      // Deteksi ID Google Drive dari berbagai pola link
+      let driveId = null;
+      const patterns = [
+        /\/file\/d\/([a-zA-Z0-9_-]+)/,
+        /[?&]id=([a-zA-Z0-9_-]+)/,
+        /\/d\/([a-zA-Z0-9_-]+)/
+      ];
+      for (const regex of patterns) {
+        const match = url.match(regex);
+        if (match && match[1]) {
+          driveId = match[1];
+          break;
+        }
+      }
+
+      if (driveId) {
+        return {
+          hasUrl: true,
+          primary: `https://drive.google.com/thumbnail?id=${driveId}&sz=w600`,
+          fallback1: `https://lh3.googleusercontent.com/d/${driveId}=w600`,
+          fallback2: `https://drive.google.com/uc?export=view&id=${driveId}`
+        };
+      }
+
+      return {
+        hasUrl: true,
+        primary: url,
+        fallback1: placeholder,
+        fallback2: placeholder
+      };
+    }
+
+    function getArrivalPhoto(person) {
+      return person.fotoDatangResolved;
+    }
+
+    function getCheckoutPhoto(person) {
+      if (person.fotoPulangResolved && person.fotoPulangResolved.hasUrl) {
+        return person.fotoPulangResolved;
+      }
+      return person.fotoDatangResolved;
+    }
+
+    function showToast(message, type = 'info') {
+      const container = document.getElementById('toastContainer');
+      if (!container) return;
+
+      const colors = {
+        success: 'bg-emerald-900 text-white border-emerald-700',
+        error: 'bg-rose-900 text-white border-rose-700',
+        info: 'bg-slate-900 text-white border-slate-700'
+      };
+
+      const toast = document.createElement('div');
+      toast.className = `pointer-events-auto px-4 py-3 rounded-2xl border shadow-xl text-xs font-semibold flex items-center gap-2 transition-all duration-300 ${colors[type] || colors.info}`;
+      toast.innerHTML = `<span>${escapeHTML(message)}</span>`;
+      container.appendChild(toast);
+
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(8px)';
+        setTimeout(() => toast.remove(), 300);
+      }, 3200);
+    }
+
+    function updateLiveClock() {
+      const now = new Date();
+      const options = {
+        weekday: 'long',
+        day: 'numeric',
+        month: 'long',
+        year: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      };
+      const el = document.getElementById('liveDateTime');
+      if (el) {
+        el.textContent = now.toLocaleDateString('id-ID', options).replace(/\./g, ':') + ' WIB';
+      }
+    }
+
+    function getTodayDateStrings() {
+      const now = new Date();
+      const yyyy = now.getFullYear();
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      const mNoPad = String(now.getMonth() + 1);
+      const dNoPad = String(now.getDate());
+
+      return [
+        `${yyyy}-${mm}-${dd}`,
+        `${dd}/${mm}/${yyyy}`,
+        `${dd}-${mm}-${yyyy}`,
+        `${dNoPad}/${mNoPad}/${yyyy}`,
+        `${yyyy}/${mm}/${dd}`
+      ];
+    }
+
+    function isTodayRecord(rawDate) {
+      if (!rawDate) return false;
+      const str = String(rawDate).trim();
+      const todayVariants = getTodayDateStrings();
+      return todayVariants.some(v => str.startsWith(v) || str === v);
+    }
+
+    // =========================================================================
+    // 3. PENGAMBILAN & PARSING DATA GOOGLE SPREADSHEET (GVIZ / APPS SCRIPT)
+    // =========================================================================
+    function parseGvizJson(responseText) {
+      const match = responseText.match(/google\.visualization\.Query\.setResponse\(([\s\S]+?)\);?\s*$/);
+      if (!match) {
+        throw new Error('Format respons Google Visualization tidak valid');
+      }
+      const json = JSON.parse(match[1]);
+      if (json.status === 'error') {
+        throw new Error(json.errors?.[0]?.detailed_message || 'Error mengambil sheet');
+      }
+
+      const cols = json.table.cols.map(c => (c.label || c.id || '').trim());
+      const rows = (json.table.rows || []).map(r => {
+        const obj = {};
+        const arr = [];
+        (r.c || []).forEach((cell, idx) => {
+          const val = cell ? (cell.f !== undefined && cell.f !== null ? cell.f : cell.v) : '';
+          const cleanVal = val === null || val === undefined ? '' : String(val).trim();
+          arr[idx] = cleanVal;
+          if (cols[idx]) {
+            obj[cols[idx].toLowerCase()] = cleanVal;
+          }
+        });
+        obj.__cols = arr;
+        return obj;
+      });
+      return { cols, rows };
+    }
+
+    async function fetchSheetViaGviz(sheetName) {
+      const url = `https://docs.google.com/spreadsheets/d/${encodeURIComponent(CONFIG.spreadsheetId)}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const text = await res.text();
+      return parseGvizJson(text);
+    }
+
+    function normalizeShiftsData(rows) {
+      const map = {};
+      rows.forEach(r => {
+        const arr = r.__cols || [];
+        const kode = (r['kode'] || arr[0] || '').trim();
+        if (!kode || kode.toLowerCase() === 'kode') return;
+
+        const jamMasuk = (r['jam masuk'] || arr[1] || '').trim();
+        const toleransiDatang = (r['toleransi datang (mnt)'] || arr[2] || '').trim();
+        const jamPulang = (r['jam pulang'] || arr[3] || '').trim();
+        const toleransiPulang = (r['toleransi pulang (mnt)'] || arr[4] || '').trim();
+        const lintasHari = (r['lintas hari'] || arr[5] || '').trim();
+        const keterangan = (r['keterangan'] || arr[6] || '').trim();
+
+        const scheduleText = jamMasuk && jamPulang ? `${jamMasuk} - ${jamPulang}` : keterangan;
+        map[kode.toUpperCase()] = {
+          kode,
+          jamMasuk,
+          toleransiDatang,
+          jamPulang,
+          toleransiPulang,
+          lintasHari,
+          keterangan: keterangan || scheduleText || `Shift ${kode}`
+        };
+      });
+      return map;
+    }
+
+    function normalizeAttendanceData(rows, shiftsMap) {
+      const records = [];
+      rows.forEach((r, idx) => {
+        const arr = r.__cols || [];
+        const id = (r['id'] || arr[0] || `ROW-${idx + 1}`).trim();
+        const tanggal = (r['tanggal'] || arr[1] || '').trim();
+        const nip = (r['nip'] || arr[2] || '').trim();
+        const nama = (r['nama'] || arr[3] || '').trim();
+        if (!nama || nama.toLowerCase() === 'nama') return;
+
+        const shiftCode = (r['shift'] || arr[4] || '-').trim();
+        const waktuMasuk = (r['waktu masuk'] || arr[5] || '-').trim();
+        const waktuPulang = (r['waktu pulang'] || arr[6] || '').trim();
+        const status = (r['status'] || arr[7] || '').trim();
+        const lokasiMasuk = (r['lokasi masuk'] || arr[8] || 'Ruangan Umum').trim() || 'Ruangan Umum';
+        const ketLuar = (r['ket luar'] || arr[9] || '').trim();
+        const terlambat = (r['terlambat (mnt)'] || arr[10] || '').trim();
+        const pulangCepat = (r['pulang cepat (mnt)'] || arr[11] || '').trim();
+        const apel = (r['apel'] || arr[12] || '').trim();
+
+        // Kolom N (index 13) = Foto Absen Datang, Kolom O (index 14) = Absen Pulang
+        const rawFotoDatang = (
+          r['foto absen datang'] ||
+          r['foto datang'] ||
+          arr[13] ||
+          ''
+        ).trim();
+
+        const rawFotoPulang = (
+          r['absen pulang'] ||
+          r['foto absen pulang'] ||
+          r['foto pulang'] ||
+          arr[14] ||
+          ''
+        ).trim();
+
+        const shiftInfo = shiftsMap[shiftCode.toUpperCase()] || {
+          kode: shiftCode,
+          jamMasuk: '',
+          jamPulang: '',
+          keterangan: `Shift ${shiftCode}`
+        };
+
+        const isCheckedOut = Boolean(
+          (waktuPulang && waktuPulang !== '-' && waktuPulang !== '00:00' && waktuPulang !== '00:00:00') ||
+          status.toLowerCase().includes('pulang')
+        );
+
+        records.push({
+          id,
+          tanggal,
+          nip,
+          nama,
+          shiftCode,
+          shiftInfo,
+          waktuMasuk,
+          waktuPulang,
+          status,
+          lokasiMasuk,
+          ketLuar,
+          terlambat,
+          pulangCepat,
+          apel,
+          isCheckedOut,
+          fotoDatangResolved: resolvePhotoUrl(rawFotoDatang, nama),
+          fotoPulangResolved: resolvePhotoUrl(rawFotoPulang, nama)
+        });
+      });
+      return records;
+    }
+
+    function getDemoDataset() {
+      const todayStr = getTodayDateStrings()[0];
+      const shiftsMap = {
+        'P': { kode: 'P', jamMasuk: '07:30', jamPulang: '14:30', keterangan: 'Shift Pagi (07:30 - 14:30)' },
+        'S': { kode: 'S', jamMasuk: '14:00', jamPulang: '21:00', keterangan: 'Shift Siang (14:00 - 21:00)' },
+        'M': { kode: 'M', jamMasuk: '21:00', jamPulang: '07:30', keterangan: 'Shift Malam (21:00 - 07:30)' },
+        'NS': { kode: 'NS', jamMasuk: '08:00', jamPulang: '16:30', keterangan: 'Non-Shift / Reguler (08:00 - 16:30)' }
+      };
+
+      const rawDemo = [
+        { id: 'ABS-01', tanggal: todayStr, nama: 'dr. Andi Pratama, Sp.PD', shiftCode: 'P', waktuMasuk: '07:22', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'IGD Utama' },
+        { id: 'ABS-02', tanggal: todayStr, nama: 'Ns. Siti Rahmawati, S.Kep', shiftCode: 'P', waktuMasuk: '07:28', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'IGD Utama' },
+        { id: 'ABS-03', tanggal: todayStr, nama: 'Budi Santoso, A.Md.Kep', shiftCode: 'M', waktuMasuk: '20:55', waktuPulang: '07:35', status: 'Pulang', lokasiMasuk: 'IGD Utama' },
+        { id: 'ABS-04', tanggal: todayStr, nama: 'Rina Marlina, S.Farm., Apt', shiftCode: 'NS', waktuMasuk: '07:50', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'Instalasi Farmasi' },
+        { id: 'ABS-05', tanggal: todayStr, nama: 'Dedi Kurniawan, A.Md.Farm', shiftCode: 'P', waktuMasuk: '07:31', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'Instalasi Farmasi' },
+        { id: 'ABS-06', tanggal: todayStr, nama: 'Lestari Wulandari, S.Kep', shiftCode: 'P', waktuMasuk: '07:18', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'Poli Rawat Jalan' },
+        { id: 'ABS-07', tanggal: todayStr, nama: 'Ahmad Fauzi, S.Kom', shiftCode: 'NS', waktuMasuk: '07:58', waktuPulang: '', status: 'Hadir', lokasiMasuk: 'Pendaftaran & Rekam Medis' },
+        { id: 'ABS-08', tanggal: todayStr, nama: 'Nadia Putri Utami', shiftCode: 'M', waktuMasuk: '20:50', waktuPulang: '07:32', status: 'Pulang', lokasiMasuk: 'Pendaftaran & Rekam Medis' }
+      ];
+
+      const allAttendance = rawDemo.map(item => {
+        const shiftInfo = shiftsMap[item.shiftCode] || { kode: item.shiftCode, keterangan: `Shift ${item.shiftCode}` };
+        const isCheckedOut = Boolean(item.waktuPulang);
+        return {
+          ...item,
+          shiftInfo,
+          isCheckedOut,
+          fotoDatangResolved: resolvePhotoUrl('', item.nama),
+          fotoPulangResolved: resolvePhotoUrl('', item.nama)
+        };
+      });
+
+      return { shiftsMap, allAttendance };
+    }
+
+    async function fetchSpreadsheetData(manualTrigger = false) {
+      const iconMobile = document.getElementById('refreshIconMobile');
+      const iconDesktop = document.getElementById('refreshIconDesktop');
+      if (iconMobile) iconMobile.classList.add('animate-spin');
+      if (iconDesktop) iconDesktop.classList.add('animate-spin');
+
+      try {
+        let shiftsMap = {};
+        let allAttendance = [];
+
+        if (CONFIG.appsScriptUrl) {
+          const res = await fetch(CONFIG.appsScriptUrl);
+          if (!res.ok) throw new Error('Apps Script gagal merespons');
+          const payload = await res.json();
+          const shiftsRows = (payload.shifts || []).map(obj => {
+            const lower = {};
+            Object.keys(obj).forEach(k => { lower[k.toLowerCase()] = String(obj[k] ?? '').trim(); });
+            lower.__cols = Object.values(obj).map(v => String(v ?? '').trim());
+            return lower;
+          });
+          const absensiRows = (payload.absensi || []).map(obj => {
+            const lower = {};
+            Object.keys(obj).forEach(k => { lower[k.toLowerCase()] = String(obj[k] ?? '').trim(); });
+            lower.__cols = Object.values(obj).map(v => String(v ?? '').trim());
+            return lower;
+          });
+          shiftsMap = normalizeShiftsData(shiftsRows);
+          allAttendance = normalizeAttendanceData(absensiRows, shiftsMap);
+        } else {
+          const [shiftsRes, absensiRes] = await Promise.all([
+            fetchSheetViaGviz(CONFIG.sheetShifts),
+            fetchSheetViaGviz(CONFIG.sheetAbsensi)
+          ]);
+          shiftsMap = normalizeShiftsData(shiftsRes.rows);
+          allAttendance = normalizeAttendanceData(absensiRes.rows, shiftsMap);
+        }
+
+        APP_STATE.shiftsMap = shiftsMap;
+        APP_STATE.allAttendance = allAttendance;
+        APP_STATE.usingFallback = false;
+        document.getElementById('fallbackBanner').classList.add('hidden');
+
+        populateShiftFilter();
+        applyDateFilterAndRender();
+
+        if (manualTrigger) {
+          showToast('Data berhasil disinkronkan dari Google Sheets.', 'success');
+        }
+      } catch (err) {
+        console.warn('Menggunakan data fallback karena gagal mengambil spreadsheet:', err);
+        const demo = getDemoDataset();
+        APP_STATE.shiftsMap = demo.shiftsMap;
+        APP_STATE.allAttendance = demo.allAttendance;
+        APP_STATE.usingFallback = true;
+        document.getElementById('fallbackBanner').classList.remove('hidden');
+
+        populateShiftFilter();
+        applyDateFilterAndRender();
+
+        if (manualTrigger) {
+          showToast('Gagal mengakses sheet langsung, menampilkan data simulasi.', 'error');
+        }
+      } finally {
+        document.getElementById('loadingGrid').classList.add('hidden');
+        document.getElementById('roomsGrid').classList.remove('hidden');
+        if (iconMobile) iconMobile.classList.remove('animate-spin');
+        if (iconDesktop) iconDesktop.classList.remove('animate-spin');
+      }
+    }
+
+    function populateShiftFilter() {
+      const select = document.getElementById('shiftFilterSelect');
+      if (!select) return;
+      const currentVal = select.value;
+
+      const shiftCodes = new Set();
+      Object.keys(APP_STATE.shiftsMap).forEach(k => shiftCodes.add(k));
+      APP_STATE.allAttendance.forEach(r => {
+        if (r.shiftCode && r.shiftCode !== '-') shiftCodes.add(r.shiftCode.toUpperCase());
+      });
+
+      select.innerHTML = `<option value="ALL">Semua Shift</option>`;
+      Array.from(shiftCodes).sort().forEach(code => {
+        const info = APP_STATE.shiftsMap[code];
+        const label = info ? `${info.kode} — ${info.keterangan}` : `Shift ${code}`;
+        const opt = document.createElement('option');
+        opt.value = code;
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
+
+      if (Array.from(select.options).some(o => o.value === currentVal)) {
+        select.value = currentVal;
+      }
+    }
+
+    function applyDateFilterAndRender() {
+      if (APP_STATE.onlyToday) {
+        const todayOnly = APP_STATE.allAttendance.filter(r => isTodayRecord(r.tanggal));
+        APP_STATE.filteredAttendance = todayOnly.length > 0 ? todayOnly : APP_STATE.allAttendance;
+      } else {
+        APP_STATE.filteredAttendance = [...APP_STATE.allAttendance];
+      }
+
+      updateGlobalCounters();
+      renderRoomsGrid();
+      updateAdminDateScopeLabel();
+
+      if (APP_STATE.masterSlide === 1 && APP_STATE.selectedRoom) {
+        renderRoomDetailSlides(APP_STATE.selectedRoom);
+      }
+    }
+
+    function toggleDateScope() {
+      APP_STATE.onlyToday = !APP_STATE.onlyToday;
+      applyDateFilterAndRender();
+    }
+
+    function updateGlobalCounters() {
+      const records = APP_STATE.filteredAttendance;
+      const uniqueRooms = new Set(records.map(r => r.lokasiMasuk));
+      const activeCount = records.filter(r => !r.isCheckedOut).length;
+      const outCount = records.filter(r => r.isCheckedOut).length;
+
+      document.getElementById('statTotalRooms').textContent = uniqueRooms.size;
+      document.getElementById('statTotalPresent').textContent = activeCount;
+      document.getElementById('statTotalOut').textContent = outCount;
+    }
+
+    // =========================================================================
+    // 4. RENDER MASTER SLIDE 1: DAFTAR RUANGAN / LOKASI MASUK
+    // =========================================================================
+    function renderRoomsGrid() {
+      const grid = document.getElementById('roomsGrid');
+      const emptyState = document.getElementById('emptyRoomsState');
+      const searchQuery = (document.getElementById('searchInput')?.value || '').trim().toLowerCase();
+      const selectedShift = (document.getElementById('shiftFilterSelect')?.value || 'ALL').toUpperCase();
+
+      // Kelompokkan data berdasarkan Lokasi Masuk
+      const roomMap = new Map();
+      APP_STATE.filteredAttendance.forEach(record => {
+        if (selectedShift !== 'ALL' && record.shiftCode.toUpperCase() !== selectedShift) {
+          return;
+        }
+        const roomName = record.lokasiMasuk;
+        if (!roomMap.has(roomName)) {
+          roomMap.set(roomName, []);
+        }
+        roomMap.get(roomName).push(record);
+      });
+
+      const rooms = [];
+      roomMap.forEach((records, roomName) => {
+        const matchesRoom = roomName.toLowerCase().includes(searchQuery);
+        const matchesStaff = records.some(p => p.nama.toLowerCase().includes(searchQuery));
+        if (!searchQuery || matchesRoom || matchesStaff) {
+          rooms.push({
+            roomName,
+            records,
+            activeStaff: records.filter(r => !r.isCheckedOut),
+            checkedOutStaff: records.filter(r => r.isCheckedOut)
+          });
+        }
+      });
+
+      rooms.sort((a, b) => b.activeStaff.length - a.activeStaff.length || a.roomName.localeCompare(b.roomName));
+
+      if (rooms.length === 0) {
+        grid.classList.add('hidden');
+        emptyState.classList.remove('hidden');
+        lucide.createIcons();
+        return;
+      }
+
+      emptyState.classList.add('hidden');
+      grid.classList.remove('hidden');
+
+      grid.innerHTML = rooms.map(room => {
+        const previewAvatars = room.activeStaff.slice(0, 4).map(p => {
+          const photo = getArrivalPhoto(p);
+          return `
+            <img
+              src="${photo.primary}"
+              data-fallback1="${photo.fallback1}"
+              data-fallback2="${photo.fallback2}"
+              onerror="handleImageError(this)"
+              alt="${escapeHTML(p.nama)}"
+              title="${escapeHTML(p.nama)}"
+              class="w-8 h-8 rounded-full object-cover ring-2 ring-white bg-blue-100"
+            />
+          `;
+        }).join('');
+
+        const extraCount = room.activeStaff.length > 4 ? `<span class="w-8 h-8 rounded-full bg-slate-100 text-slate-700 text-[11px] font-bold flex items-center justify-center ring-2 ring-white">+${room.activeStaff.length - 4}</span>` : '';
+
+        return `
+          <div onclick="openRoomDetail('${escapeQuotes(room.roomName)}')" class="group cursor-pointer bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/90 hover:border-blue-400 shadow-xs hover:shadow-lg hover:shadow-blue-600/5 transition-all duration-200 flex flex-col justify-between">
+            <div>
+              <div class="flex items-start justify-between gap-3">
+                <div class="w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                  <i data-lucide="door-open" class="w-5 h-5"></i>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                    ${room.activeStaff.length} Hadir
+                  </span>
+                  ${room.checkedOutStaff.length > 0 ? `
+                    <span class="px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-700 border border-amber-200/70">
+                      ${room.checkedOutStaff.length} Pulang
+                    </span>
+                  ` : ''}
+                </div>
+              </div>
+
+              <h3 class="text-base sm:text-lg font-extrabold text-slate-900 mt-4 group-hover:text-blue-600 transition-colors line-clamp-1">
+                ${escapeHTML(room.roomName)}
+              </h3>
+              <p class="text-xs text-slate-500 mt-1">
+                Total tercatat hari ini: <strong>${room.records.length}</strong> petugas
+              </p>
+            </div>
+
+            <div class="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
+              <div class="flex -space-x-2 overflow-hidden">
+                ${previewAvatars || '<span class="text-xs text-slate-400 italic">Semua petugas sudah pulang</span>'}
+                ${extraCount}
+              </div>
+
+              <span class="inline-flex items-center gap-1 text-xs font-bold text-blue-600 group-hover:translate-x-1 transition-transform">
+                <span>Lihat Detail</span>
+                <i data-lucide="arrow-right" class="w-3.5 h-3.5"></i>
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 5. NAVIGASI MASTER SLIDE & DETAIL ROOM 3 SUB-SLIDES
+    // =========================================================================
+    function openRoomDetail(roomName) {
+      APP_STATE.selectedRoom = roomName;
+      APP_STATE.masterSlide = 1;
+      APP_STATE.detailSlide = 0;
+
+      document.getElementById('detailRoomTitle').textContent = roomName;
+      renderRoomDetailSlides(roomName);
+      updateMasterSliderPosition();
+      setDetailSlide(0);
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function goBackToRooms() {
+      APP_STATE.masterSlide = 0;
+      updateMasterSliderPosition();
+    }
+
+    function updateMasterSliderPosition() {
+      const track = document.getElementById('masterSliderTrack');
+      if (track) {
+        track.style.transform = `translateX(-${APP_STATE.masterSlide * 50}%)`;
+      }
+    }
+
+    function setDetailSlide(slideIndex) {
+      const clamped = Math.max(0, Math.min(2, slideIndex));
+      APP_STATE.detailSlide = clamped;
+
+      const track = document.getElementById('detailSliderTrack');
+      if (track) {
+        track.style.transform = `translateX(-${clamped * (100 / 3)}%)`;
+      }
+
+      // Update Tab Styling
+      [0, 1, 2].forEach(idx => {
+        const tab = document.getElementById(`tabSubSlide${idx}`);
+        if (!tab) return;
+        if (idx === clamped) {
+          tab.className = 'px-3 py-2 rounded-xl text-xs font-bold transition-all bg-white text-blue-700 shadow-xs flex items-center justify-center gap-1.5';
+        } else {
+          tab.className = 'px-3 py-2 rounded-xl text-xs font-bold transition-all text-slate-600 hover:text-slate-900 flex items-center justify-center gap-1.5';
+        }
+      });
+
+      const prevBtn = document.getElementById('prevSubSlideBtn');
+      const nextBtn = document.getElementById('nextSubSlideBtn');
+      if (prevBtn) prevBtn.disabled = clamped === 0;
+      if (nextBtn) nextBtn.disabled = clamped === 2;
+    }
+
+    function stepDetailSlide(delta) {
+      setDetailSlide(APP_STATE.detailSlide + delta);
+    }
+
+    function renderRoomDetailSlides(roomName) {
+      const selectedShift = (document.getElementById('shiftFilterSelect')?.value || 'ALL').toUpperCase();
+      const roomRecords = APP_STATE.filteredAttendance.filter(r => {
+        const matchRoom = r.lokasiMasuk === roomName;
+        const matchShift = selectedShift === 'ALL' || r.shiftCode.toUpperCase() === selectedShift;
+        return matchRoom && matchShift;
+      });
+
+      const activeStaff = roomRecords.filter(r => !r.isCheckedOut);
+      const checkedOutStaff = roomRecords.filter(r => r.isCheckedOut);
+
+      document.getElementById('detailActiveCount').textContent = activeStaff.length;
+      document.getElementById('detailOutCount').textContent = checkedOutStaff.length;
+
+      // -----------------------------------------------------------------------
+      // RENDER SUB-SLIDE 1: DAFTAR NAMA YANG HADIR (TANPA NIP, STATUS, APEL)
+      // -----------------------------------------------------------------------
+      const activeListContainer = document.getElementById('activeListContainer');
+      if (activeStaff.length === 0) {
+        activeListContainer.innerHTML = `
+          <div class="p-10 text-center">
+            <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="user-check" class="w-6 h-6"></i>
+            </div>
+            <h4 class="text-sm font-bold text-slate-800">Tidak ada petugas aktif di ruangan ini</h4>
+            <p class="text-xs text-slate-500 mt-1">Semua petugas yang tercatat di ruangan ini kemungkinan sudah berstatus pulang (cek Slide 3).</p>
+          </div>
+        `;
+      } else {
+        activeListContainer.innerHTML = `
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="border-b border-slate-200/80 bg-slate-50/70 text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <th class="py-3.5 px-4 sm:px-5 w-14">No</th>
+                <th class="py-3.5 px-4">Nama Petugas</th>
+                <th class="py-3.5 px-4">Shift &amp; Jadwal</th>
+                <th class="py-3.5 px-4">Waktu Masuk</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 text-sm">
+              ${activeStaff.map((person, index) => {
+                const photo = getArrivalPhoto(person);
+                return `
+                  <tr class="hover:bg-blue-50/30 transition-colors">
+                    <td class="py-3.5 px-4 sm:px-5 text-xs font-semibold text-slate-400">${index + 1}</td>
+                    <td class="py-3.5 px-4">
+                      <div class="flex items-center gap-3">
+                        <button type="button" onclick="openPhotoModal('${escapeQuotes(person.id)}', 'datang')" class="relative group/thumb shrink-0 focus:outline-none" title="Klik untuk perbesar foto absen datang">
+                          <img
+                            src="${photo.primary}"
+                            data-fallback1="${photo.fallback1}"
+                            data-fallback2="${photo.fallback2}"
+                            onerror="handleImageError(this)"
+                            alt="${escapeHTML(person.nama)}"
+                            class="w-10 h-10 rounded-xl object-cover ring-2 ring-slate-100 group-hover/thumb:ring-blue-400 transition bg-slate-100"
+                          />
+                          <span class="absolute -bottom-1 -right-1 w-4 h-4 rounded-full bg-blue-600 text-white flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity shadow-xs">
+                            <i data-lucide="zoom-in" class="w-2.5 h-2.5"></i>
+                          </span>
+                        </button>
+                        <div class="font-bold text-slate-900">${escapeHTML(person.nama)}</div>
+                      </div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                        ${escapeHTML(person.shiftCode)}
+                      </span>
+                      <div class="text-[11px] text-slate-500 mt-1">${escapeHTML(person.shiftInfo.keterangan)}</div>
+                    </td>
+                    <td class="py-3.5 px-4">
+                      <div class="inline-flex items-center gap-1.5 font-mono font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg text-xs">
+                        <i data-lucide="clock" class="w-3.5 h-3.5 text-blue-600"></i>
+                        ${escapeHTML(person.waktuMasuk)} WIB
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
+            </tbody>
+          </table>
+        `;
+      }
+
+      // -----------------------------------------------------------------------
+      // RENDER SUB-SLIDE 2: KARTU PETUGAS HADIR (FOTO KOLOM N, NAMA, SHIFT, JAM KEDATANGAN)
+      // -----------------------------------------------------------------------
+      const activeCardsContainer = document.getElementById('activeCardsContainer');
+      if (activeStaff.length === 0) {
+        activeCardsContainer.innerHTML = `
+          <div class="col-span-full p-10 text-center">
+            <p class="text-sm font-semibold text-slate-700">Tidak ada kartu petugas aktif untuk ditampilkan.</p>
+            <p class="text-xs text-slate-500 mt-1">Silakan geser ke Slide 3 untuk melihat petugas yang sudah pulang.</p>
+          </div>
+        `;
+      } else {
+        activeCardsContainer.innerHTML = activeStaff.map(person => {
+          const photo = getArrivalPhoto(person);
+          return `
+            <div class="rounded-3xl border border-slate-200/90 bg-gradient-to-b from-white to-slate-50/70 p-5 shadow-xs hover:shadow-md transition-all flex flex-col items-center text-center relative overflow-hidden">
+
+              <!-- Shift Badge -->
+              <div class="w-full flex items-center justify-center mb-3">
+                <span class="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                  ${escapeHTML(person.shiftCode)}
+                </span>
+              </div>
+
+              <!-- Profile Photo (Kolom N: Foto Absen Datang) -->
+              <button type="button" onclick="openPhotoModal('${escapeQuotes(person.id)}', 'datang')" class="relative mb-3 group/cardphoto focus:outline-none" title="Klik untuk memperbesar Foto Absen Datang">
+                <img
+                  src="${photo.primary}"
+                  data-fallback1="${photo.fallback1}"
+                  data-fallback2="${photo.fallback2}"
+                  onerror="handleImageError(this)"
+                  alt="${escapeHTML(person.nama)}"
+                  class="w-24 h-24 rounded-2xl object-cover ring-4 ring-white shadow-md bg-blue-100 group-hover/cardphoto:scale-105 transition-transform"
+                />
+                <span class="absolute -bottom-1.5 -right-1.5 w-6 h-6 rounded-full bg-blue-600 border-2 border-white flex items-center justify-center shadow-xs" title="Lihat Foto Absen Datang">
+                  <i data-lucide="camera" class="w-3 h-3 text-white"></i>
+                </span>
+              </button>
+
+              <!-- Name & Shift Info -->
+              <h4 class="text-sm sm:text-base font-bold text-slate-900 line-clamp-1" title="${escapeHTML(person.nama)}">
+                ${escapeHTML(person.nama)}
+              </h4>
+              <p class="text-[11px] text-slate-500 mt-1 line-clamp-1">${escapeHTML(person.shiftInfo.keterangan)}</p>
+
+              <!-- Arrival Time Box -->
+              <div class="w-full mt-4 pt-3.5 border-t border-slate-200/70 flex items-center justify-between text-xs">
+                <span class="text-slate-500 font-medium">Jam Kedatangan</span>
+                <span class="inline-flex items-center gap-1 font-mono font-bold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-xl">
+                  <i data-lucide="log-in" class="w-3.5 h-3.5"></i>
+                  ${escapeHTML(person.waktuMasuk)} WIB
+                </span>
+              </div>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // -----------------------------------------------------------------------
+      // RENDER SUB-SLIDE 3: DAFTAR KARYAWAN STATUS PULANG (FOTO KOLOM O / FALLBACK KOLOM N)
+      // -----------------------------------------------------------------------
+      const checkedOutContainer = document.getElementById('checkedOutContainer');
+      if (checkedOutStaff.length === 0) {
+        checkedOutContainer.innerHTML = `
+          <div class="py-10 text-center">
+            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="clock-4" class="w-6 h-6"></i>
+            </div>
+            <h4 class="text-sm font-bold text-slate-800">Belum ada karyawan yang berstatus pulang</h4>
+            <p class="text-xs text-slate-500 mt-1 max-w-md mx-auto">Seluruh petugas di ruangan <strong>${escapeHTML(roomName)}</strong> saat ini masih berstatus aktif hadir (lihat Slide 1 &amp; Slide 2).</p>
+          </div>
+        `;
+      } else {
+        checkedOutContainer.innerHTML = `
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${checkedOutStaff.map(person => {
+              const checkoutPhoto = getCheckoutPhoto(person);
+              const hasOwnCheckoutPhoto = person.fotoPulangResolved.hasUrl;
+              const defaultModalType = hasOwnCheckoutPhoto ? 'pulang' : 'datang';
+              return `
+              <div class="flex items-center gap-4 p-4 rounded-2xl border border-amber-200/80 bg-amber-50/30 hover:bg-amber-50/60 transition">
+                <button type="button" onclick="openPhotoModal('${escapeQuotes(person.id)}', '${defaultModalType}')" class="relative group/outphoto shrink-0 focus:outline-none" title="Klik untuk melihat bukti foto absensi">
+                  <img
+                    src="${checkoutPhoto.primary}"
+                    data-fallback1="${checkoutPhoto.fallback1}"
+                    data-fallback2="${checkoutPhoto.fallback2}"
+                    onerror="handleImageError(this)"
+                    alt="${escapeHTML(person.nama)}"
+                    class="w-16 h-16 rounded-2xl object-cover ring-2 ring-white shadow-xs group-hover/outphoto:scale-105 transition-transform bg-slate-200"
+                  />
+                  <span class="absolute -bottom-1 -right-1 px-1.5 py-0.5 rounded-md text-[9px] font-bold ${hasOwnCheckoutPhoto ? 'bg-amber-600 text-white' : 'bg-slate-700 text-white'} shadow-xs">
+                    ${hasOwnCheckoutPhoto ? 'Pulang' : 'Datang'}
+                  </span>
+                </button>
+                <div class="flex-1 min-w-0">
+                  <h4 class="text-sm font-bold text-slate-900 truncate">${escapeHTML(person.nama)}</h4>
+                  <p class="text-xs text-slate-500 mt-0.5 truncate">Shift ${escapeHTML(person.shiftCode)} • ${escapeHTML(person.shiftInfo.keterangan)}</p>
+
+                  <div class="flex flex-wrap items-center gap-2 mt-2.5 text-xs">
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-white border border-slate-200 text-slate-700 font-mono">
+                      <i data-lucide="log-in" class="w-3 h-3 text-emerald-600"></i>
+                      Masuk: ${escapeHTML(person.waktuMasuk)}
+                    </span>
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-amber-600 text-white font-mono font-semibold">
+                      <i data-lucide="log-out" class="w-3 h-3"></i>
+                      Pulang: ${escapeHTML(person.waktuPulang || '-')}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            `;}).join('')}
+          </div>
+        `;
+      }
+
+      lucide.createIcons();
+    }
+
+    // =========================================================================
+    // 6. TOUCH SWIPE & KEYBOARD NAVIGATION UNTUK SUB-SLIDE
+    // =========================================================================
+    function initTouchSwipe() {
+      const swipeArea = document.getElementById('detailSwipeArea');
+      if (!swipeArea) return;
+
+      let touchStartX = 0;
+      let touchStartY = 0;
+
+      swipeArea.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+      }, { passive: true });
+
+      swipeArea.addEventListener('touchend', (e) => {
+        const dx = e.changedTouches[0].screenX - touchStartX;
+        const dy = e.changedTouches[0].screenY - touchStartY;
+
+        if (Math.abs(dx) > 45 && Math.abs(dx) > Math.abs(dy) * 1.2) {
+          if (dx < 0) {
+            stepDetailSlide(1);
+          } else {
+            stepDetailSlide(-1);
+          }
+        }
+      }, { passive: true });
+
+      document.addEventListener('keydown', (e) => {
+        const lightbox = document.getElementById('photoLightboxModal');
+        if (lightbox && !lightbox.classList.contains('hidden')) {
+          if (e.key === 'Escape') closePhotoModal();
+          return;
+        }
+        const adminModal = document.getElementById('adminLoginModal');
+        if (adminModal && !adminModal.classList.contains('hidden')) {
+          if (e.key === 'Escape') closeAdminLoginModal();
+          return;
+        }
+        const settingsModal = document.getElementById('settingsModal');
+        if (settingsModal && !settingsModal.classList.contains('hidden')) {
+          if (e.key === 'Escape') closeSettingsModal();
+          return;
+        }
+        if (APP_STATE.masterSlide === 1) {
+          if (e.key === 'ArrowRight') stepDetailSlide(1);
+          if (e.key === 'ArrowLeft') stepDetailSlide(-1);
+          if (e.key === 'Escape') goBackToRooms();
+        }
+      });
+    }
+
+    // =========================================================================
+    // 7. PHOTO LIGHTBOX MODAL
+    // =========================================================================
+    function openPhotoModal(personId, type = 'datang') {
+      const person = APP_STATE.allAttendance.find(p => String(p.id) === String(personId));
+      if (!person) return;
+
+      ACTIVE_LIGHTBOX_PERSON = person;
+      document.getElementById('lightboxName').textContent = person.nama;
+      document.getElementById('lightboxSub').textContent = person.lokasiMasuk;
+
+      const hasDatang = person.fotoDatangResolved.hasUrl;
+      const hasPulang = person.fotoPulangResolved.hasUrl;
+      const switchTabs = document.getElementById('lightboxSwitchTabs');
+
+      if (hasDatang && hasPulang) {
+        switchTabs.classList.remove('hidden');
+      } else {
+        switchTabs.classList.add('hidden');
+      }
+
+      switchLightboxPhoto(type);
+
+      const modal = document.getElementById('photoLightboxModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function switchLightboxPhoto(type) {
+      if (!ACTIVE_LIGHTBOX_PERSON) return;
+      const person = ACTIVE_LIGHTBOX_PERSON;
+      const img = document.getElementById('lightboxImage');
+      const badge = document.getElementById('lightboxBadge');
+      const btnDatang = document.getElementById('btnLightboxDatang');
+      const btnPulang = document.getElementById('btnLightboxPulang');
+
+      img.dataset.errStage = '0';
+      img.onerror = function() { handleImageError(this); };
+
+      if (type === 'pulang' && person.fotoPulangResolved.hasUrl) {
+        const photo = person.fotoPulangResolved;
+        img.src = photo.primary;
+        img.dataset.fallback1 = photo.fallback1;
+        img.dataset.fallback2 = photo.fallback2;
+        badge.textContent = 'Foto Absen Pulang (Kolom O)';
+        badge.className = 'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-amber-50 text-amber-700';
+
+        if (btnPulang && btnDatang) {
+          btnPulang.className = 'py-2 px-3 rounded-xl text-xs font-bold transition border bg-amber-600 text-white border-amber-600';
+          btnDatang.className = 'py-2 px-3 rounded-xl text-xs font-bold transition border bg-white text-slate-600 border-slate-200 hover:bg-slate-50';
+        }
+      } else {
+        const photo = person.fotoDatangResolved;
+        img.src = photo.primary;
+        img.dataset.fallback1 = photo.fallback1;
+        img.dataset.fallback2 = photo.fallback2;
+        badge.textContent = 'Foto Absen Datang (Kolom N)';
+        badge.className = 'inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-blue-50 text-blue-700';
+
+        if (btnPulang && btnDatang) {
+          btnDatang.className = 'py-2 px-3 rounded-xl text-xs font-bold transition border bg-blue-600 text-white border-blue-600';
+          btnPulang.className = 'py-2 px-3 rounded-xl text-xs font-bold transition border bg-white text-slate-600 border-slate-200 hover:bg-slate-50';
+        }
+      }
+    }
+
+    function closePhotoModal() {
+      const modal = document.getElementById('photoLightboxModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+      ACTIVE_LIGHTBOX_PERSON = null;
+    }
+
+    // =========================================================================
+    // 8. ADMIN AUTHENTICATION & SETTINGS MODAL
+    // =========================================================================
+    function handleAdminAccessClick() {
+      if (APP_STATE.isAdminAuthenticated) {
+        openSettingsModal();
+      } else {
+        openAdminLoginModal();
+      }
+    }
+
+    function openAdminLoginModal() {
+      const modal = document.getElementById('adminLoginModal');
+      const input = document.getElementById('adminPasswordInput');
+      input.value = '';
+      input.type = 'password';
+      document.getElementById('adminEyeIcon').setAttribute('data-lucide', 'eye');
+      clearAdminLoginError();
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+      setTimeout(() => input.focus(), 80);
+    }
+
+    function closeAdminLoginModal() {
+      const modal = document.getElementById('adminLoginModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function toggleAdminPasswordVisibility() {
+      const input = document.getElementById('adminPasswordInput');
+      const icon = document.getElementById('adminEyeIcon');
+      if (input.type === 'password') {
+        input.type = 'text';
+        icon.setAttribute('data-lucide', 'eye-off');
+      } else {
+        input.type = 'password';
+        icon.setAttribute('data-lucide', 'eye');
+      }
+      lucide.createIcons();
+    }
+
+    function clearAdminLoginError() {
+      document.getElementById('adminLoginError').classList.add('hidden');
+      document.getElementById('adminPasswordInput').classList.remove('border-rose-500', 'ring-2', 'ring-rose-500/20');
+    }
+
+    function submitAdminPassword(event) {
+      event.preventDefault();
+      const input = document.getElementById('adminPasswordInput');
+      const entered = input.value.trim();
+
+      if (entered === CONFIG.adminPassword) {
+        APP_STATE.isAdminAuthenticated = true;
+        sessionStorage.setItem(CONFIG.adminSessionKey, 'true');
+        updateAdminHeaderUI();
+        closeAdminLoginModal();
+        openSettingsModal();
+        showToast('Akses Admin berhasil diverifikasi.', 'success');
+      } else {
+        const errEl = document.getElementById('adminLoginError');
+        const cardEl = document.getElementById('adminLoginCard');
+        errEl.classList.remove('hidden');
+        input.classList.add('border-rose-500', 'ring-2', 'ring-rose-500/20');
+        cardEl.classList.remove('animate-shake');
+        void cardEl.offsetWidth;
+        cardEl.classList.add('animate-shake');
+        input.focus();
+        input.select();
+      }
+    }
+
+    function logoutAdminSession() {
+      APP_STATE.isAdminAuthenticated = false;
+      sessionStorage.removeItem(CONFIG.adminSessionKey);
+      updateAdminHeaderUI();
+      closeSettingsModal();
+      showToast('Anda telah keluar dari mode Admin.', 'info');
+    }
+
+    function updateAdminHeaderUI() {
+      const desktopBtn = document.getElementById('adminAccessBtnDesktop');
+      const desktopIcon = document.getElementById('adminIconDesktop');
+      const desktopLabel = document.getElementById('adminBtnLabelDesktop');
+      const mobileIcon = document.getElementById('adminIconMobile');
+
+      if (APP_STATE.isAdminAuthenticated) {
+        if (desktopBtn) {
+          desktopBtn.className = 'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold shadow-sm transition active:scale-95';
+        }
+        if (desktopIcon) {
+          desktopIcon.setAttribute('data-lucide', 'database');
+          desktopIcon.className = 'w-3.5 h-3.5 text-white';
+        }
+        if (desktopLabel) {
+          desktopLabel.textContent = 'Sumber Sheet (Admin)';
+        }
+        if (mobileIcon) {
+          mobileIcon.setAttribute('data-lucide', 'database');
+          mobileIcon.className = 'w-4 h-4 text-emerald-400';
+        }
+      } else {
+        if (desktopBtn) {
+          desktopBtn.className = 'inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-semibold shadow-sm transition active:scale-95';
+        }
+        if (desktopIcon) {
+          desktopIcon.setAttribute('data-lucide', 'lock');
+          desktopIcon.className = 'w-3.5 h-3.5 text-blue-400';
+        }
+        if (desktopLabel) {
+          desktopLabel.textContent = 'Akses Admin';
+        }
+        if (mobileIcon) {
+          mobileIcon.setAttribute('data-lucide', 'shield-check');
+          mobileIcon.className = 'w-4 h-4 text-blue-400';
+        }
+      }
+      lucide.createIcons();
+    }
+
+    function updateAdminDateScopeLabel() {
+      const el = document.getElementById('adminDateScopeLabel');
+      if (el) {
+        el.textContent = APP_STATE.onlyToday ? 'Filter: Hanya Hari Ini' : 'Filter: Semua Tanggal';
+      }
+    }
+
+    function resetDefaultSheetConfig() {
+      document.getElementById('inputSheetId').value = '1CLMsyPDi6Vp49M8Mm2JfURD7VkG7qznmkcKcWvL9Ibg';
+      document.getElementById('inputSheetAbsensi').value = 'Absensi';
+      document.getElementById('inputSheetShifts').value = 'Shifts';
+      document.getElementById('inputAppsScriptUrl').value = '';
+      showToast('Kolom konfigurasi dikembalikan ke nilai default.', 'info');
+    }
+
+    function openSettingsModal() {
+      if (!APP_STATE.isAdminAuthenticated) {
+        openAdminLoginModal();
+        return;
+      }
+      document.getElementById('inputSheetId').value = CONFIG.spreadsheetId;
+      document.getElementById('inputSheetAbsensi').value = CONFIG.sheetAbsensi;
+      document.getElementById('inputSheetShifts').value = CONFIG.sheetShifts;
+      document.getElementById('inputAppsScriptUrl').value = CONFIG.appsScriptUrl;
+      updateAdminDateScopeLabel();
+      const modal = document.getElementById('settingsModal');
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+      lucide.createIcons();
+    }
+
+    function closeSettingsModal() {
+      const modal = document.getElementById('settingsModal');
+      modal.classList.add('hidden');
+      modal.classList.remove('flex');
+    }
+
+    function saveSettingsAndSync() {
+      CONFIG.spreadsheetId = document.getElementById('inputSheetId').value.trim() || CONFIG.spreadsheetId;
+      CONFIG.sheetAbsensi = document.getElementById('inputSheetAbsensi').value.trim() || 'Absensi';
+      CONFIG.sheetShifts = document.getElementById('inputSheetShifts').value.trim() || 'Shifts';
+      CONFIG.appsScriptUrl = document.getElementById('inputAppsScriptUrl').value.trim();
+      closeSettingsModal();
+      fetchSpreadsheetData(true);
+    }
+
+    // =========================================================================
+    // 9. BOOTSTRAP APPLICATION
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      updateAdminHeaderUI();
+      lucide.createIcons();
+      updateLiveClock();
+      setInterval(updateLiveClock, 1000);
+      initTouchSwipe();
+      fetchSpreadsheetData(false);
+    });
+  </script>
+</body>
+</html>
