@@ -94,7 +94,7 @@
                                 <span id="connection-text">Memuat...</span>
                             </span>
                         </div>
-                        <p class="text-xs text-slate-500 hidden sm:block">Sistem Informasi Ketersediaan Petugas Unit Layanan</p>
+                        <p class="text-xs text-slate-500 hidden sm:block">Sistem Informasi Ketersediaan Petugas Unit Layanan Puskesmas Kalibunder</p>
                     </div>
                 </div>
 
@@ -1084,12 +1084,18 @@
         }
 
         function processAndRenderData(absensiRows, shiftsRows) {
-            // Bangun peta kode Shift dari sheet Shifts
+            // Bangun peta kode Shift dari sheet Shifts (Kolom A: Kode, Kolom G: Keterangan)
             const shiftsMap = {};
             (shiftsRows || []).forEach(s => {
-                const code = (s['Kode'] || '').trim().toUpperCase();
+                const keys = Object.keys(s);
+                const code = (s['Kode'] || (keys[0] ? s[keys[0]] : '') || '').trim().toUpperCase();
                 if (code) {
-                    shiftsMap[code] = s;
+                    const keterangan = (s['Keterangan'] || (keys[6] ? s[keys[6]] : '') || '').trim();
+                    shiftsMap[code] = {
+                        ...s,
+                        'Kode': (s['Kode'] || (keys[0] ? s[keys[0]] : '') || '').trim(),
+                        'Keterangan': keterangan
+                    };
                 }
             });
             appState.shiftsMap = shiftsMap;
@@ -1462,11 +1468,12 @@
             tbody.innerHTML = hadirList.map((row, idx) => {
                 const fallback = getAvatarFallback(row['Nama']);
                 const photoUrl = row._fotoDatangUrl || fallback;
-                const shiftCode = row['Shift'] || '-';
-                const shiftInfo = row._shiftDetail
+                const shiftCode = (row._shiftDetail?.['Kode'] || row['Shift'] || '-').trim();
+                const shiftDesc = (row._shiftDetail?.['Keterangan'] || '').trim();
+                const shiftSchedule = (row._shiftDetail?.['Jam Masuk'] && row._shiftDetail?.['Jam Pulang'])
                     ? `${row._shiftDetail['Jam Masuk']} - ${row._shiftDetail['Jam Pulang']}`
-                    : 'Jadwal standar';
-                const shiftDesc = row._shiftDetail?.['Keterangan'] || '';
+                    : '';
+                const shiftKeteranganLabel = shiftDesc || shiftSchedule || `Shift ${shiftCode}`;
                 const carryOverBadge = row._isCarryOverShift4
                     ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-clock-rotate-left"></i> belum pulang sift kemarin</span>`
                     : '';
@@ -1494,9 +1501,9 @@
                         <td class="py-3.5 px-4">
                             <div class="flex items-center gap-1.5">
                                 <span class="px-2 py-0.5 rounded-md text-xs font-extrabold bg-indigo-100 text-indigo-800">${shiftCode}</span>
-                                <span class="text-xs font-semibold text-slate-700">${shiftInfo}</span>
+                                <span class="text-xs font-semibold text-slate-700">${shiftKeteranganLabel}</span>
                             </div>
-                            ${shiftDesc ? `<p class="text-[11px] text-slate-400 mt-0.5">${shiftDesc}</p>` : ''}
+                            ${(shiftDesc && shiftSchedule && !shiftDesc.includes(shiftSchedule)) ? `<p class="text-[11px] text-slate-400 mt-0.5">${shiftSchedule}</p>` : ''}
                         </td>
                         <td class="py-3.5 px-4">
                             <span class="font-mono text-sm font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/70">
@@ -1525,8 +1532,12 @@
             grid.innerHTML = hadirList.map(row => {
                 const fallback = getAvatarFallback(row['Nama']);
                 const photoUrl = row._fotoDatangUrl || fallback;
-                const shiftCode = row['Shift'] || '-';
-                const shiftKeterangan = row._shiftDetail?.['Keterangan'] || `Shift ${shiftCode}`;
+                const shiftCode = (row._shiftDetail?.['Kode'] || row['Shift'] || '-').trim();
+                const shiftDesc = (row._shiftDetail?.['Keterangan'] || '').trim();
+                const shiftSchedule = (row._shiftDetail?.['Jam Masuk'] && row._shiftDetail?.['Jam Pulang'])
+                    ? `${row._shiftDetail['Jam Masuk']} - ${row._shiftDetail['Jam Pulang']}`
+                    : '';
+                const shiftKeterangan = shiftDesc || shiftSchedule || `Shift ${shiftCode}`;
                 const carryOverBadge = row._isCarryOverShift4
                     ? `<div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
                            <i class="fa-solid fa-clock-rotate-left"></i>
@@ -1574,12 +1585,15 @@
                                 
                                 <div class="mt-3 space-y-1.5 text-xs text-slate-600">
                                     <div class="flex items-center gap-2">
-                                        <i class="fa-solid fa-location-dot text-brand-600 w-3.5 text-center"></i>
+                                        <i class="fa-solid fa-location-dot text-brand-600 w-3.5 text-center shrink-0"></i>
                                         <span class="font-medium truncate">${row._resolvedRoom || '-'}</span>
                                     </div>
-                                    <div class="flex items-center gap-2">
-                                        <i class="fa-regular fa-clock text-indigo-600 w-3.5 text-center"></i>
-                                        <span class="truncate">${shiftKeterangan}</span>
+                                    <div class="flex items-start gap-2">
+                                        <i class="fa-regular fa-clock text-indigo-600 w-3.5 text-center mt-0.5 shrink-0"></i>
+                                        <div class="min-w-0 flex-1">
+                                            <span class="inline-block px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800 mr-1">${shiftCode}</span>
+                                            <span class="font-semibold text-slate-700">${shiftKeterangan}</span>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
