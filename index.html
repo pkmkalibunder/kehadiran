@@ -150,13 +150,14 @@
                     <span>1. Ruangan</span>
                 </button>
                 <button onclick="goToSlide(1)" data-slide-tab="1" class="slide-tab px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
-                    <i class="fa-solid fa-list-check"></i>
-                    <span>2. Daftar Hadir</span>
-                    <span id="badge-count-hadir-1" class="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">0</span>
+                    <i class="fa-solid fa-id-badge"></i>
+                    <span>2. Kartu Foto Hadir</span>
+                    <span id="badge-count-hadir-card" class="px-1.5 py-0.2 rounded-full bg-blue-100 text-blue-800 text-[10px] font-bold">0</span>
                 </button>
                 <button onclick="goToSlide(2)" data-slide-tab="2" class="slide-tab px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
-                    <i class="fa-solid fa-id-badge"></i>
-                    <span>3. Kartu Foto Hadir</span>
+                    <i class="fa-solid fa-list-check"></i>
+                    <span>3. Daftar Hadir</span>
+                    <span id="badge-count-hadir-1" class="px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-bold">0</span>
                 </button>
                 <button onclick="goToSlide(3)" data-slide-tab="3" class="slide-tab px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200">
                     <i class="fa-solid fa-person-walking-arrow-right"></i>
@@ -250,7 +251,48 @@
             </section>
 
             <!-- ===================================================================== -->
-            <!-- SLIDE 2: DAFTAR NAMA YANG HADIR (TABEL / LIST RINGKAS)                -->
+            <!-- SLIDE 2: KARTU PETUGAS HADIR LENGKAP DENGAN FOTO DATANG               -->
+            <!-- ===================================================================== -->
+            <section class="slide-panel px-4 sm:px-6 lg:px-8 py-6">
+                <div class="max-w-7xl mx-auto">
+                    
+                    <!-- Slide Header -->
+                    <div class="bg-gradient-to-r from-brand-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                        <div>
+                            <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/15 text-xs font-semibold mb-2">
+                                <i class="fa-solid fa-camera"></i>
+                                <span>Slide 1 dari 3 • Galeri Kartu Kehadiran</span>
+                            </div>
+                            <h2 class="text-xl sm:text-2xl font-bold" id="slide3-room-heading">Kartu Petugas Hadir</h2>
+                            <p class="text-xs sm:text-sm text-blue-100 mt-0.5">Bukti foto absen datang, identitas petugas, shift, dan jam kedatangan hari ini.</p>
+                        </div>
+                        <div class="flex items-center gap-2 self-start sm:self-center">
+                            <button onclick="goToSlide(0)" class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-arrow-left"></i>
+                                <span>Ruangan</span>
+                            </button>
+                            <button onclick="goToSlide(2)" class="px-4 py-2.5 rounded-xl bg-white text-brand-800 hover:bg-blue-50 font-bold text-xs sm:text-sm shadow transition flex items-center gap-1.5">
+                                <span>Daftar Hadir</span>
+                                <i class="fa-solid fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Cards Grid Container -->
+                    <div id="hadir-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
+                        <!-- Rendered dynamically -->
+                    </div>
+
+                    <!-- Bottom Swipe Helper -->
+                    <div class="mt-5 flex items-center justify-between text-xs text-slate-400">
+                        <button onclick="goToSlide(0)" class="text-slate-500 font-semibold hover:underline">← Kembali ke Pilihan Ruangan</button>
+                        <button onclick="goToSlide(2)" class="text-emerald-600 font-semibold hover:underline">Lanjut ke Daftar Hadir →</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- ===================================================================== -->
+            <!-- SLIDE 3: DAFTAR NAMA YANG HADIR (TABEL / LIST RINGKAS)                -->
             <!-- ===================================================================== -->
             <section class="slide-panel px-4 sm:px-6 lg:px-8 py-6">
                 <div class="max-w-7xl mx-auto">
@@ -260,14 +302,18 @@
                         <div>
                             <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/15 text-xs font-semibold mb-2">
                                 <i class="fa-solid fa-user-clock"></i>
-                                <span>Slide 1 dari 3 • Daftar Petugas Aktif Bertugas</span>
+                                <span>Slide 2 dari 3 • Daftar Petugas Aktif Bertugas</span>
                             </div>
                             <h2 class="text-xl sm:text-2xl font-bold" id="slide2-room-heading">Daftar Petugas Hadir</h2>
                             <p class="text-xs sm:text-sm text-emerald-100 mt-0.5">Menampilkan petugas yang sudah absen masuk dan belum melakukan absen pulang.</p>
                         </div>
                         <div class="flex items-center gap-2 self-start sm:self-center">
-                            <button onclick="goToSlide(2)" class="px-4 py-2.5 rounded-xl bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-xs sm:text-sm shadow transition flex items-center gap-2">
-                                <span>Lihat Kartu Foto</span>
+                            <button onclick="goToSlide(1)" class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-arrow-left"></i>
+                                <span>Kartu Foto</span>
+                            </button>
+                            <button onclick="goToSlide(3)" class="px-4 py-2.5 rounded-xl bg-white text-emerald-800 hover:bg-emerald-50 font-bold text-xs sm:text-sm shadow transition flex items-center gap-2">
+                                <span>Status Pulang</span>
                                 <i class="fa-solid fa-arrow-right"></i>
                             </button>
                         </div>
@@ -309,48 +355,7 @@
 
                     <!-- Bottom Swipe Helper -->
                     <div class="mt-4 flex items-center justify-between text-xs text-slate-400">
-                        <span><i class="fa-solid fa-hand-pointer mr-1"></i> Geser (swipe) ke kiri/kanan atau gunakan tombol panah</span>
-                        <button onclick="goToSlide(2)" class="text-brand-600 font-semibold hover:underline">Lanjut ke Kartu Foto Hadir →</button>
-                    </div>
-                </div>
-            </section>
-
-            <!-- ===================================================================== -->
-            <!-- SLIDE 3: KARTU PETUGAS HADIR LENGKAP DENGAN FOTO DATANG               -->
-            <!-- ===================================================================== -->
-            <section class="slide-panel px-4 sm:px-6 lg:px-8 py-6">
-                <div class="max-w-7xl mx-auto">
-                    
-                    <!-- Slide Header -->
-                    <div class="bg-gradient-to-r from-brand-600 to-indigo-700 rounded-2xl p-5 text-white shadow-md mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                        <div>
-                            <div class="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-white/15 text-xs font-semibold mb-2">
-                                <i class="fa-solid fa-camera"></i>
-                                <span>Slide 2 dari 3 • Galeri Kartu Kehadiran</span>
-                            </div>
-                            <h2 class="text-xl sm:text-2xl font-bold" id="slide3-room-heading">Kartu Petugas Hadir</h2>
-                            <p class="text-xs sm:text-sm text-blue-100 mt-0.5">Bukti foto absen datang, identitas petugas, shift, dan jam kedatangan hari ini.</p>
-                        </div>
-                        <div class="flex items-center gap-2 self-start sm:self-center">
-                            <button onclick="goToSlide(1)" class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
-                                <i class="fa-solid fa-arrow-left"></i>
-                                <span>Daftar</span>
-                            </button>
-                            <button onclick="goToSlide(3)" class="px-4 py-2.5 rounded-xl bg-white text-brand-800 hover:bg-blue-50 font-bold text-xs sm:text-sm shadow transition flex items-center gap-1.5">
-                                <span>Status Pulang</span>
-                                <i class="fa-solid fa-arrow-right"></i>
-                            </button>
-                        </div>
-                    </div>
-
-                    <!-- Cards Grid Container -->
-                    <div id="hadir-cards-grid" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-5">
-                        <!-- Rendered dynamically -->
-                    </div>
-
-                    <!-- Bottom Swipe Helper -->
-                    <div class="mt-5 flex items-center justify-between text-xs text-slate-400">
-                        <button onclick="goToSlide(1)" class="text-slate-500 font-semibold hover:underline">← Kembali ke Daftar Ringkas</button>
+                        <button onclick="goToSlide(1)" class="text-slate-500 font-semibold hover:underline">← Kembali ke Kartu Foto Hadir</button>
                         <button onclick="goToSlide(3)" class="text-rose-600 font-semibold hover:underline">Lanjut ke Daftar Sudah Pulang →</button>
                     </div>
                 </div>
@@ -375,7 +380,7 @@
                         <div class="flex items-center gap-2 self-start sm:self-center">
                             <button onclick="goToSlide(2)" class="px-3.5 py-2.5 rounded-xl bg-white/15 hover:bg-white/25 text-white font-semibold text-xs sm:text-sm transition flex items-center gap-1.5">
                                 <i class="fa-solid fa-arrow-left"></i>
-                                <span>Kartu Hadir</span>
+                                <span>Daftar Hadir</span>
                             </button>
                             <button onclick="goToSlide(0)" class="px-4 py-2.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 font-bold text-xs sm:text-sm shadow transition flex items-center gap-1.5">
                                 <i class="fa-solid fa-building"></i>
@@ -391,7 +396,7 @@
 
                     <!-- Bottom Swipe Helper -->
                     <div class="mt-5 flex items-center justify-between text-xs text-slate-400">
-                        <button onclick="goToSlide(2)" class="text-slate-500 font-semibold hover:underline">← Kembali ke Kartu Foto Hadir</button>
+                        <button onclick="goToSlide(2)" class="text-slate-500 font-semibold hover:underline">← Kembali ke Daftar Hadir</button>
                         <button onclick="goToSlide(0)" class="text-brand-600 font-semibold hover:underline">Kembali ke Pilihan Ruangan ↺</button>
                     </div>
                 </div>
@@ -989,7 +994,7 @@
             if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
                 badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
                 badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-emerald-500 live-dot';
-                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Spreadsheet';
+                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Data Absensi 1.4';
                 settingsDesc.textContent = 'Terhubung langsung ke Google Spreadsheet ID: ' + SPREADSHEET_ID;
             } else {
                 badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
@@ -1387,6 +1392,7 @@
             });
 
             // Update badge counter pada tab navigasi
+            document.getElementById('badge-count-hadir-card').textContent = hadirListRaw.length;
             document.getElementById('badge-count-hadir-1').textContent = hadirListRaw.length;
             document.getElementById('badge-count-pulang').textContent = pulangList.length;
 
@@ -1698,10 +1704,11 @@
         // =========================================================================
         // 8. NAVIGASI SLIDE (KLIK, KEYBOARD ARROW, & TOUCH SWIPE GESTURE)
         // =========================================================================
-        function selectRoomAndSlide(roomName) {
+        async function selectRoomAndSlide(roomName) {
             appState.selectedRoom = roomName;
             renderActiveRoomSlides();
-            goToSlide(1); // Otomatis slide ke daftar hadir petugas untuk ruangan terpilih
+            goToSlide(1); // Otomatis slide ke Kartu Foto Hadir untuk ruangan terpilih
+            await fetchSpreadsheetData(false); // Sinkronisasi otomatis setiap klik kartu ruangan
         }
 
         function goToSlide(slideIndex) {
@@ -1933,11 +1940,9 @@
             goToSlide(0);
             fetchSpreadsheetData(false);
 
-            // Auto-refresh setiap 60 detik untuk memantau kehadiran real-time
+            // Auto-refresh setiap 1 menit (60 detik) untuk memantau kehadiran real-time
             setInterval(() => {
-                if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
-                    fetchSpreadsheetData(false);
-                }
+                fetchSpreadsheetData(false);
             }, 60000);
         });
     </script>
