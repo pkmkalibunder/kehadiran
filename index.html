@@ -583,7 +583,7 @@
             gasWebAppUrl: localStorage.getItem('epresensi_gas_url') || '',
             rawAbsensi: [],            // Semua data dari sheet Absensi
             shiftsMap: {},             // Map Kode Shift -> Detail Shift dari sheet Shifts
-            filteredTodayData: []      // Data Absensi terfilter sesuai tanggal yang dipilih
+            filteredTodayData: []      // Data Absensi terfilter sesuai tanggal yang dipilih + shift 4 kemarin belum pulang
         };
 
         // =========================================================================
@@ -593,6 +593,17 @@
             const now = new Date();
             const offset = now.getTimezoneOffset() * 60000;
             return new Date(now.getTime() - offset).toISOString().split('T')[0];
+        }
+
+        function getPreviousDateISO(isoDateStr) {
+            if (!isoDateStr) return '';
+            const parts = isoDateStr.split('-').map(Number);
+            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
+            dateObj.setDate(dateObj.getDate() - 1);
+            const year = dateObj.getFullYear();
+            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
+            const day = String(dateObj.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
 
         function updateLiveClock() {
@@ -612,6 +623,7 @@
         // 3. DATA SIMULASI / FALLBACK LENGKAP (SESUAI HEADER SPREADSHEET)
         // =========================================================================
         function getDemoData(targetDateISO) {
+            const yesterdayISO = getPreviousDateISO(targetDateISO);
             // Sheet Shifts: Kode, Jam Masuk, Toleransi Datang (Mnt), Jam Pulang, Toleransi Pulang (Mnt), Lintas Hari, Keterangan
             const demoShifts = [
                 {
@@ -642,6 +654,15 @@
                     'Keterangan': 'Shift Malam Lintas Hari (21:00 - 07:30)'
                 },
                 {
+                    'Kode': '4',
+                    'Jam Masuk': '21:00',
+                    'Toleransi Datang (Mnt)': '15',
+                    'Jam Pulang': '07:30',
+                    'Toleransi Pulang (Mnt)': '0',
+                    'Lintas Hari': 'Ya',
+                    'Keterangan': 'Shift Malam Kode 4 (21:00 - 07:30)'
+                },
+                {
                     'Kode': 'NS',
                     'Jam Masuk': '08:00',
                     'Toleransi Datang (Mnt)': '10',
@@ -654,6 +675,23 @@
 
             // Sheet Absensi: ID, Tanggal, NIP, Nama, Shift, Waktu Masuk, Waktu Pulang, Status, Lokasi Masuk, Ket Luar, Terlambat (Mnt), Pulang Cepat (Mnt), Apel, Foto Datang, Foto Pulang
             const demoAbsensi = [
+                {
+                    'ID': 'ABS-000',
+                    'Tanggal': yesterdayISO,
+                    'NIP': '199104152018021006',
+                    'Nama': 'Wahyu Hidayat, A.Md.Kep',
+                    'Shift': '4',
+                    'Waktu Masuk': '20:55:10',
+                    'Waktu Pulang': '',
+                    'Status': 'Hadir',
+                    'Lokasi Masuk': 'IGD & Triase Utama',
+                    'Ket Luar': '',
+                    'Terlambat (Mnt)': '0',
+                    'Pulang Cepat (Mnt)': '0',
+                    'Apel': 'Tidak Apel',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': ''
+                },
                 {
                     'ID': 'ABS-001',
                     'Tanggal': targetDateISO,
@@ -823,6 +861,40 @@
                     'Apel': 'Hadir Apel',
                     'Foto Datang': 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80'
+                },
+                {
+                    'ID': 'ABS-011',
+                    'Tanggal': yesterdayISO,
+                    'NIP': '198605142012121004',
+                    'Nama': 'dr. Farhan Hakim, Sp.B',
+                    'Shift': 'S',
+                    'Waktu Masuk': '13:55:10',
+                    'Waktu Pulang': '',
+                    'Status': 'Hadir',
+                    'Lokasi Masuk': 'IGD & Triase Utama',
+                    'Ket Luar': '',
+                    'Terlambat (Mnt)': '0',
+                    'Pulang Cepat (Mnt)': '0',
+                    'Apel': 'Tidak Apel',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': ''
+                },
+                {
+                    'ID': 'ABS-012',
+                    'Tanggal': yesterdayISO,
+                    'NIP': '199304082019032006',
+                    'Nama': 'Lestari Wulandari, A.Md.Kep',
+                    'Shift': 'M',
+                    'Waktu Masuk': '20:50:05',
+                    'Waktu Pulang': '',
+                    'Status': 'Hadir',
+                    'Lokasi Masuk': 'Ruang Rawat Inap Teratai',
+                    'Ket Luar': '',
+                    'Terlambat (Mnt)': '0',
+                    'Pulang Cepat (Mnt)': '0',
+                    'Apel': 'Tidak Apel',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': ''
                 }
             ];
 
@@ -1034,6 +1106,7 @@
 
         function applyDateFilterAndRender() {
             const targetDate = appState.selectedDate;
+            const yesterdayDate = getPreviousDateISO(targetDate);
             
             // Jika menggunakan mode Demo, regenerasi tanggal demo agar selalu cocok dengan tanggal yang dipilih pengguna
             if (appState.dataMode === 'DEMO') {
@@ -1051,7 +1124,7 @@
 
                     return {
                         ...row,
-                        _isoDate: targetDate,
+                        _isoDate: row['Tanggal'] === yesterdayDate ? yesterdayDate : targetDate,
                         _isPulang: isEmployeePulang(row),
                         _shiftDetail: shiftDetail,
                         _resolvedRoom: resolvedRoom,
@@ -1062,8 +1135,30 @@
                 });
             }
 
-            // Filter data berdasarkan tanggal terpilih
-            appState.filteredTodayData = appState.rawAbsensi.filter(r => r._isoDate === targetDate);
+            // Filter data:
+            // 1. Semua catatan absensi pada tanggal terpilih (targetDate)
+            // 2. Catatan absensi hari kemarin (yesterdayDate) dengan kode Shift '4' dan status belum pulang
+            appState.filteredTodayData = appState.rawAbsensi
+                .filter(r => {
+                    const isToday = r._isoDate === targetDate;
+                    const isYesterdayShift4Unreturned = (
+                        r._isoDate === yesterdayDate &&
+                        (r['Shift'] || '').trim() === '4' &&
+                        !r._isPulang
+                    );
+                    return isToday || isYesterdayShift4Unreturned;
+                })
+                .map(r => {
+                    const isCarryOver = (
+                        r._isoDate === yesterdayDate &&
+                        (r['Shift'] || '').trim() === '4' &&
+                        !r._isPulang
+                    );
+                    return {
+                        ...r,
+                        _isCarryOverShift4: isCarryOver
+                    };
+                });
 
             // Populate dropdown filter Shift pada Slide 2
             populateShiftFilterDropdown();
@@ -1327,17 +1422,21 @@
                     ? `${row._shiftDetail['Jam Masuk']} - ${row._shiftDetail['Jam Pulang']}`
                     : 'Jadwal standar';
                 const shiftDesc = row._shiftDetail?.['Keterangan'] || '';
+                const carryOverBadge = row._isCarryOverShift4
+                    ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-clock-rotate-left"></i> belum pulang sift kemarin</span>`
+                    : '';
 
                 return `
-                    <tr class="hover:bg-slate-50/90 transition">
+                    <tr class="hover:bg-slate-50/90 transition ${row._isCarryOverShift4 ? 'bg-amber-50/35' : ''}">
                         <td class="py-3.5 px-4 text-xs font-bold text-slate-400">${idx + 1}</td>
                         <td class="py-3.5 px-4">
                             <div class="flex items-center gap-3">
                                 <img src="${photoUrl}" onerror="this.onerror=null;this.src='${fallback}'" alt="${row['Nama']}"
-                                     onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}', '${photoUrl}', 'Foto Absen Datang')"
+                                     onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}${row._isCarryOverShift4 ? ' (belum pulang sift kemarin)' : ''}', '${photoUrl}', 'Foto Absen Datang')"
                                      class="w-10 h-10 rounded-xl object-cover border border-slate-200 cursor-pointer hover:scale-105 transition shrink-0">
                                 <div>
                                     <p class="font-bold text-slate-900 leading-snug">${row['Nama'] || '-'}</p>
+                                    ${carryOverBadge}
                                 </div>
                             </div>
                         </td>
@@ -1383,11 +1482,17 @@
                 const photoUrl = row._fotoDatangUrl || fallback;
                 const shiftCode = row['Shift'] || '-';
                 const shiftKeterangan = row._shiftDetail?.['Keterangan'] || `Shift ${shiftCode}`;
+                const carryOverBadge = row._isCarryOverShift4
+                    ? `<div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                           <i class="fa-solid fa-clock-rotate-left"></i>
+                           <span>belum pulang sift kemarin</span>
+                       </div>`
+                    : '';
 
                 return `
-                    <div class="bg-white rounded-3xl overflow-hidden border border-slate-200/90 shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group">
+                    <div class="bg-white rounded-3xl overflow-hidden border ${row._isCarryOverShift4 ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200/90'} shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group">
                         <!-- Foto Absen Datang -->
-                        <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}', '${photoUrl}', 'Foto Absen Datang')"
+                        <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}${row._isCarryOverShift4 ? ' (belum pulang sift kemarin)' : ''}', '${photoUrl}', 'Foto Absen Datang')"
                              class="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer">
                             <img src="${photoUrl}" onerror="this.onerror=null;this.src='${fallback}'" alt="Foto ${row['Nama']}"
                                  class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
@@ -1395,9 +1500,9 @@
                             
                             <!-- Top Badges -->
                             <div class="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-500/95 text-white shadow-sm backdrop-blur-sm flex items-center gap-1.5">
+                                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold ${row._isCarryOverShift4 ? 'bg-amber-500/95' : 'bg-emerald-500/95'} text-white shadow-sm backdrop-blur-sm flex items-center gap-1.5">
                                     <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                                    HADIR
+                                    ${row._isCarryOverShift4 ? 'SIFT KEMARIN' : 'HADIR'}
                                 </span>
                                 <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-slate-900/80 text-white backdrop-blur-sm">
                                     Shift ${shiftCode}
@@ -1420,6 +1525,7 @@
                         <div class="p-4 flex-1 flex flex-col justify-between">
                             <div>
                                 <h3 class="font-bold text-slate-900 text-base leading-snug line-clamp-2">${row['Nama'] || '-'}</h3>
+                                ${carryOverBadge}
                                 
                                 <div class="mt-3 space-y-1.5 text-xs text-slate-600">
                                     <div class="flex items-center gap-2">
@@ -1514,6 +1620,76 @@
                                 </button>
                             </div>
                         ` : ''}
+                    </div>
+                `;
+            }).join('');
+        }
+
+        // --- SLIDE 5: Daftar Absensi Kode 4 (Kehadiran Kemarin Status Belum Pulang) ---
+        function renderSlide5Kode4(kode4List, yesterdayISO) {
+            const grid = document.getElementById('kode4-cards-grid');
+
+            if (kode4List.length === 0) {
+                grid.innerHTML = `
+                    <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
+                        <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto mb-3 text-2xl">
+                            <i class="fa-solid fa-circle-check"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800">Tidak Ada Absensi Kode 4</h3>
+                        <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
+                            Seluruh petugas yang hadir pada tanggal <span class="font-semibold text-slate-700">${yesterdayISO}</span> sudah tercatat melakukan absen pulang.
+                        </p>
+                    </div>
+                `;
+                return;
+            }
+
+            grid.innerHTML = kode4List.map(row => {
+                const fallback = getAvatarFallback(row['Nama']);
+                const fotoDatang = row._fotoDatangUrl || fallback;
+                const shiftCode = row['Shift'] || '-';
+
+                return `
+                    <div class="bg-white rounded-3xl p-4 border border-amber-200/90 shadow-sm hover:shadow-lg transition flex flex-col justify-between">
+                        <div class="flex items-start gap-3.5">
+                            <!-- Foto Datang Kemarin -->
+                            <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', 'Kemarin (${escapeHtml(yesterdayISO)}) Masuk: ${escapeHtml(row['Waktu Masuk'])}', '${fotoDatang}', 'Kode 4 • Foto Datang Kemarin')"
+                                 class="relative w-20 h-24 rounded-2xl overflow-hidden bg-slate-100 border border-amber-200 shrink-0 cursor-pointer group">
+                                <img src="${fotoDatang}" onerror="this.onerror=null;this.src='${fallback}'" alt="${row['Nama']}"
+                                     class="w-full h-full object-cover group-hover:scale-105 transition">
+                                <span class="absolute bottom-1 inset-x-1 text-center text-[9px] font-extrabold bg-amber-600/95 text-white rounded py-0.5">
+                                    KODE 4
+                                </span>
+                            </div>
+
+                            <!-- Info Petugas -->
+                            <div class="flex-1 min-w-0">
+                                <div class="flex items-center justify-between gap-1">
+                                    <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700">
+                                        Shift ${shiftCode}
+                                    </span>
+                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
+                                        Belum Pulang
+                                    </span>
+                                </div>
+                                <h3 class="font-bold text-slate-900 text-sm sm:text-base mt-1.5 truncate">${row['Nama'] || '-'}</h3>
+                                <p class="text-xs text-slate-600 mt-1 truncate">
+                                    <i class="fa-solid fa-location-dot text-amber-600 mr-1"></i>${row._resolvedRoom || '-'}
+                                </p>
+                            </div>
+                        </div>
+
+                        <!-- Info Waktu Masuk Kemarin & Status Pulang -->
+                        <div class="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
+                            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
+                                <span class="text-[10px] text-slate-400 block">Masuk (${yesterdayISO})</span>
+                                <span class="font-mono font-bold text-slate-700">${row['Waktu Masuk'] || '-'}</span>
+                            </div>
+                            <div class="bg-amber-50 rounded-xl p-2.5 border border-amber-200/70">
+                                <span class="text-[10px] text-amber-700 block">Waktu Pulang</span>
+                                <span class="font-mono font-bold text-amber-800">Belum Absen</span>
+                            </div>
+                        </div>
                     </div>
                 `;
             }).join('');
