@@ -530,6 +530,7 @@
   var ss = SpreadsheetApp.openById('1CLMsyPDi6Vp49M8Mm2JfURD7VkG7qznmkcKcWvL9Ibg');
   var absensiSheet = ss.getSheetByName('Absensi');
   var shiftsSheet = ss.getSheetByName('Shifts');
+  var settingsSheet = ss.getSheetByName('Settings');
   
   function sheetToJSON(sheet) {
     if (!sheet) return [];
@@ -549,7 +550,8 @@
   var result = {
     status: 'success',
     absensi: sheetToJSON(absensiSheet),
-    shifts: sheetToJSON(shiftsSheet)
+    shifts: sheetToJSON(shiftsSheet),
+    settings: sheetToJSON(settingsSheet)
   };
 
   return ContentService
@@ -579,20 +581,22 @@
         const SPREADSHEET_ID = '1CLMsyPDi6Vp49M8Mm2JfURD7VkG7qznmkcKcWvL9Ibg';
         const SHEET_ABSENSI = 'Absensi';
         const SHEET_SHIFTS = 'Shifts';
+        const SHEET_SETTINGS = 'Settings';
 
         let appState = {
-            currentSlide: 0,           // 0: Ruangan, 1: Daftar Hadir, 2: Kartu Hadir, 3: Sudah Pulang
-            selectedRoom: 'ALL',       // 'ALL' atau nama ruangan spesifik dari kolom 'Lokasi Masuk'
+            currentSlide: 0,           // 0: Ruangan, 1: Kartu Foto Hadir, 2: Daftar Hadir, 3: Sudah Pulang
+            selectedRoom: 'ALL',       // 'ALL' atau nama ruangan spesifik dari kolom 'Lokasi Masuk' / Settings
             selectedDate: '',          // Format YYYY-MM-DD
             dataMode: 'LOADING',       // 'LIVE', 'GAS', 'DEMO'
             gasWebAppUrl: localStorage.getItem('epresensi_gas_url') || '',
             rawAbsensi: [],            // Semua data dari sheet Absensi
             shiftsMap: {},             // Map Kode Shift -> Detail Shift dari sheet Shifts
+            configuredRooms: [],       // Daftar ruangan dari sheet Settings (Kunci: RUANGAN)
             filteredTodayData: []      // Data Absensi terfilter sesuai tanggal yang dipilih + shift 4 kemarin belum pulang
         };
 
         // =========================================================================
-        // 2. INISIALISASI WAKTU REAL-TIME & TANGGAL HARI INI
+        // 2. HELPER TANGGAL, FORMAT JAM, DAN KONVERSI LINK FOTO GOOGLE DRIVE
         // =========================================================================
         function getTodayISO() {
             const now = new Date();
@@ -600,348 +604,158 @@
             return new Date(now.getTime() - offset).toISOString().split('T')[0];
         }
 
-        function getPreviousDateISO(isoDateStr) {
-            if (!isoDateStr) return '';
-            const parts = isoDateStr.split('-').map(Number);
-            const dateObj = new Date(parts[0], parts[1] - 1, parts[2]);
-            dateObj.setDate(dateObj.getDate() - 1);
-            const year = dateObj.getFullYear();
-            const month = String(dateObj.getMonth() + 1).padStart(2, '0');
-            const day = String(dateObj.getDate()).padStart(2, '0');
-            return `${year}-${month}-${day}`;
+        function getYesterdayISO(dateStr) {
+            const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+            base.setDate(base.getDate() - 1);
+            const offset = base.getTimezoneOffset() * 60000;
+            return new Date(base.getTime() - offset).toISOString().split('T')[0];
         }
 
-        function updateLiveClock() {
-            const now = new Date();
-            const timeStr = now.toLocaleTimeString('id-ID', { hour12: false });
-            const dateStr = now.toLocaleDateString('id-ID', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'short',
-                year: 'numeric'
-            });
-            document.getElementById('live-clock').textContent = timeStr;
-            document.getElementById('live-date-label').textContent = dateStr;
+        function normalizeDateToISO(rawDate) {
+            if (!rawDate) return '';
+            const str = String(rawDate).trim();
+            if (/^\d{4}-\d{2}-\d{2}/.test(str)) {
+                return str.substring(0, 10);
+            }
+            const dmy = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+            if (dmy) {
+                const day = dmy[1].padStart(2, '0');
+                const month = dmy[2].padStart(2, '0');
+                return `${dmy[3]}-${month}-${day}`;
+            }
+            const parsed = new Date(str);
+            if (!isNaN(parsed.getTime())) {
+                const offset = parsed.getTimezoneOffset() * 60000;
+                return new Date(parsed.getTime() - offset).toISOString().split('T')[0];
+            }
+            return str;
+        }
+
+        function formatPhotoUrl(url) {
+            if (!url) return '';
+            const clean = String(url).trim();
+            if (!clean || clean === '-' || clean.toLowerCase() === 'null') return '';
+            const driveMatch = clean.match(/(?:\/d\/|id=)([a-zA-Z0-9_-]{20,})/);
+            if (driveMatch && driveMatch[1]) {
+                return `https://drive.google.com/thumbnail?id=${driveMatch[1]}&sz=w600`;
+            }
+            return clean;
+        }
+
+        function getAvatarFallback(name) {
+            const encoded = encodeURIComponent(name || 'Petugas');
+            return `https://ui-avatars.com/api/?name=${encoded}&background=2563eb&color=fff&size=256&bold=true`;
+        }
+
+        function escapeHtml(str) {
+            return String(str || '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
         }
 
         // =========================================================================
-        // 3. DATA SIMULASI / FALLBACK LENGKAP (SESUAI HEADER SPREADSHEET)
+        // 3. DATA SIMULASI DEMO (OTOMATIS AKTIF JIKA SPREADSHEET BELUM PUBLIK)
         // =========================================================================
-        function getDemoData(targetDateISO) {
-            const yesterdayISO = getPreviousDateISO(targetDateISO);
-            // Sheet Shifts: Kode, Jam Masuk, Toleransi Datang (Mnt), Jam Pulang, Toleransi Pulang (Mnt), Lintas Hari, Keterangan
+        function getDemoData(targetDate) {
+            const todayISO = targetDate || getTodayISO();
+            const yesterdayISO = getYesterdayISO(todayISO);
+
             const demoShifts = [
-                {
-                    'Kode': 'P',
-                    'Jam Masuk': '07:30',
-                    'Toleransi Datang (Mnt)': '15',
-                    'Jam Pulang': '14:00',
-                    'Toleransi Pulang (Mnt)': '0',
-                    'Lintas Hari': 'Tidak',
-                    'Keterangan': 'Shift Pagi (07:30 - 14:00)'
-                },
-                {
-                    'Kode': 'S',
-                    'Jam Masuk': '14:00',
-                    'Toleransi Datang (Mnt)': '15',
-                    'Jam Pulang': '21:00',
-                    'Toleransi Pulang (Mnt)': '0',
-                    'Lintas Hari': 'Tidak',
-                    'Keterangan': 'Shift Siang / Sore (14:00 - 21:00)'
-                },
-                {
-                    'Kode': 'M',
-                    'Jam Masuk': '21:00',
-                    'Toleransi Datang (Mnt)': '15',
-                    'Jam Pulang': '07:30',
-                    'Toleransi Pulang (Mnt)': '0',
-                    'Lintas Hari': 'Ya',
-                    'Keterangan': 'Shift Malam Lintas Hari (21:00 - 07:30)'
-                },
-                {
-                    'Kode': '4',
-                    'Jam Masuk': '21:00',
-                    'Toleransi Datang (Mnt)': '15',
-                    'Jam Pulang': '07:30',
-                    'Toleransi Pulang (Mnt)': '0',
-                    'Lintas Hari': 'Ya',
-                    'Keterangan': 'Shift Malam Kode 4 (21:00 - 07:30)'
-                },
-                {
-                    'Kode': 'NS',
-                    'Jam Masuk': '08:00',
-                    'Toleransi Datang (Mnt)': '10',
-                    'Jam Pulang': '16:30',
-                    'Toleransi Pulang (Mnt)': '0',
-                    'Lintas Hari': 'Tidak',
-                    'Keterangan': 'Non-Shift / Reguler Kantor (08:00 - 16:30)'
-                }
+                { 'Kode': '1', 'Jam Masuk': '07:30', 'Toleransi Datang (Mnt)': '15', 'Jam Pulang': '14:30', 'Toleransi Pulang (Mnt)': '0', 'Lintas Hari': 'Tidak', 'Keterangan': 'Shift Pagi (07:30 - 14:30)' },
+                { 'Kode': '2', 'Jam Masuk': '14:00', 'Toleransi Datang (Mnt)': '15', 'Jam Pulang': '21:00', 'Toleransi Pulang (Mnt)': '0', 'Lintas Hari': 'Tidak', 'Keterangan': 'Shift Siang / Sore (14:00 - 21:00)' },
+                { 'Kode': '4', 'Jam Masuk': '20:30', 'Toleransi Datang (Mnt)': '15', 'Jam Pulang': '07:30', 'Toleransi Pulang (Mnt)': '0', 'Lintas Hari': 'Ya', 'Keterangan': 'Shift Malam Lintas Hari (20:30 - 07:30)' },
+                { 'Kode': 'NS', 'Jam Masuk': '08:00', 'Toleransi Datang (Mnt)': '15', 'Jam Pulang': '16:00', 'Toleransi Pulang (Mnt)': '0', 'Lintas Hari': 'Tidak', 'Keterangan': 'Non-Shift / Reguler Kantor' },
+                { 'Kode': 'DL', 'Jam Masuk': '08:00', 'Toleransi Datang (Mnt)': '0', 'Jam Pulang': '16:00', 'Toleransi Pulang (Mnt)': '0', 'Lintas Hari': 'Tidak', 'Keterangan': 'Dinas Luar' }
             ];
 
-            // Sheet Absensi: ID, Tanggal, NIP, Nama, Shift, Waktu Masuk, Waktu Pulang, Status, Lokasi Masuk, Ket Luar, Terlambat (Mnt), Pulang Cepat (Mnt), Apel, Foto Datang, Foto Pulang
             const demoAbsensi = [
                 {
-                    'ID': 'ABS-000',
-                    'Tanggal': yesterdayISO,
-                    'NIP': '199104152018021006',
-                    'Nama': 'Wahyu Hidayat, A.Md.Kep',
-                    'Shift': '4',
-                    'Waktu Masuk': '20:55:10',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'IGD & Triase Utama',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1522075469751-3a6694fb2f61?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-001',
-                    'Tanggal': targetDateISO,
-                    'NIP': '198804122015031002',
-                    'Nama': 'dr. Hendra Wijaya, Sp.PD',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:22:15',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Poliklinik Penyakit Dalam',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
+                    'ID': 'ABS-001', 'Tanggal': todayISO, 'NIP': '198801012015011001', 'Nama': 'dr. Ahmad Fauzi, Sp.PD',
+                    'Shift': 'NS', 'Waktu Masuk': '07:45:12', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'Lokasi Masuk': 'Poliklinik Penyakit Dalam', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
                     'Foto Datang': 'https://images.unsplash.com/photo-1612349317150-e413f6a5b16d?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-002',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199208192019022004',
-                    'Nama': 'Ns. Siti Rahmawati, S.Kep',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:28:40',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'IGD & Triase Utama',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
+                    'ID': 'ABS-002', 'Tanggal': todayISO, 'NIP': '199204122019032004', 'Nama': 'Ns. Siti Rahmawati, S.Kep',
+                    'Shift': '1', 'Waktu Masuk': '07:22:05', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'Lokasi Masuk': 'IGD & Triase Utama', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
                     'Foto Datang': 'https://images.unsplash.com/photo-1594824476967-48c8b964273f?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-003',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199003052018011007',
-                    'Nama': 'Ahmad Fauzi Pratama, A.Md.Kep',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:48:10',
-                    'Waktu Pulang': '',
-                    'Status': 'Terlambat',
-                    'Lokasi Masuk': 'IGD & Triase Utama',
-                    'Ket Luar': 'Macet lalu lintas',
-                    'Terlambat (Mnt)': '18',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
+                    'ID': 'ABS-003', 'Tanggal': todayISO, 'NIP': '199008152018011002', 'Nama': 'Budi Santoso, S.Farm., Apt',
+                    'Shift': '1', 'Waktu Masuk': '07:48:30', 'Waktu Pulang': '14:35:10', 'Status': 'Pulang',
+                    'Lokasi Masuk': 'Instalasi Farmasi Pusat', 'Ket Luar': '', 'Terlambat (Mnt)': '3', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
                     'Foto Datang': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80'
+                },
+                {
+                    'ID': 'ABS-004', 'Tanggal': todayISO, 'NIP': '199502202020121005', 'Nama': 'Rizky Pratama, S.Kom',
+                    'Shift': 'NS', 'Waktu Masuk': '07:55:00', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'Lokasi Masuk': 'Ruang IT & SIMRS', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-004',
-                    'Tanggal': targetDateISO,
-                    'NIP': '198511202010012011',
-                    'Nama': 'Rina Kartika Sari, S.Farm., Apt',
-                    'Shift': 'NS',
-                    'Waktu Masuk': '07:51:05',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Instalasi Farmasi Pusat',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1559839734-2b71ea197ec2?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-005',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199402142020121003',
-                    'Nama': 'Budi Santoso, S.Kom',
-                    'Shift': 'NS',
-                    'Waktu Masuk': '07:55:30',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Ruang IT & SIMRS',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-006',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199107222017042009',
-                    'Nama': 'Dewi Lestari, A.Md.AK',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:19:00',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Laboratorium Patologi Klinik',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
+                    'ID': 'ABS-005', 'Tanggal': todayISO, 'NIP': '198911052014022003', 'Nama': 'Dewi Lestari, A.Md.AK',
+                    'Shift': '1', 'Waktu Masuk': '07:29:40', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'Lokasi Masuk': 'Laboratorium Patologi Klinik', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
                     'Foto Datang': 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-007',
-                    'Tanggal': targetDateISO,
-                    'NIP': '198909102016031005',
-                    'Nama': 'Eko Prasetyo, A.Md.Kep',
-                    'Shift': 'M',
-                    'Waktu Masuk': '20:52:14',
-                    'Waktu Pulang': '07:35:20',
-                    'Status': 'Pulang',
-                    'Lokasi Masuk': 'IGD & Triase Utama',
-                    'Ket Luar': 'Selesai Shift Malam',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': 'https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=400&q=80'
-                },
-                {
-                    'ID': 'ABS-008',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199312012019032008',
-                    'Nama': 'Nadia Putri Maharani, A.Md.Keb',
-                    'Shift': 'M',
-                    'Waktu Masuk': '20:55:42',
-                    'Waktu Pulang': '07:32:10',
-                    'Status': 'Pulang',
-                    'Lokasi Masuk': 'Ruang Rawat Inap Teratai',
-                    'Ket Luar': 'Selesai Shift Malam',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80'
-                },
-                {
-                    'ID': 'ABS-009',
-                    'Tanggal': targetDateISO,
-                    'NIP': '199506182021011004',
-                    'Nama': 'Rizky Ramadhan, S.Kep',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:25:11',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Ruang Rawat Inap Teratai',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Hadir Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1519085360753-af0119f7cbe7?auto=format&fit=crop&w=400&q=80',
+                    'ID': 'ABS-006', 'Tanggal': todayISO, 'NIP': '198706182011011004', 'Nama': 'Hendra Wijaya, S.KM',
+                    'Shift': 'DL', 'Waktu Masuk': '08:02:15', 'Waktu Pulang': '', 'Status': 'Dinas Luar',
+                    'Lokasi Masuk': '-', 'Ket Luar': 'Rapat Koordinasi Dinas Kesehatan Provinsi', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-010',
-                    'Tanggal': targetDateISO,
-                    'NIP': '198701292014022001',
-                    'Nama': 'Fitriani Handayani, S.Gz',
-                    'Shift': 'P',
-                    'Waktu Masuk': '07:15:00',
-                    'Waktu Pulang': '13:45:00',
-                    'Status': 'Pulang',
-                    'Lokasi Masuk': 'Instalasi Gizi & Dapur',
-                    'Ket Luar': 'Izin urusan keluarga',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '15',
-                    'Apel': 'Hadir Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': 'https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&w=400&q=80'
-                },
-                {
-                    'ID': 'ABS-011',
-                    'Tanggal': yesterdayISO,
-                    'NIP': '198605142012121004',
-                    'Nama': 'dr. Farhan Hakim, Sp.B',
-                    'Shift': 'S',
-                    'Waktu Masuk': '13:55:10',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'IGD & Triase Utama',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1622253692010-333f2da6031d?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-012',
-                    'Tanggal': yesterdayISO,
-                    'NIP': '199304082019032006',
-                    'Nama': 'Lestari Wulandari, A.Md.Kep',
-                    'Shift': 'M',
-                    'Waktu Masuk': '20:50:05',
-                    'Waktu Pulang': '',
-                    'Status': 'Hadir',
-                    'Lokasi Masuk': 'Ruang Rawat Inap Teratai',
-                    'Ket Luar': '',
-                    'Terlambat (Mnt)': '0',
-                    'Pulang Cepat (Mnt)': '0',
-                    'Apel': 'Tidak Apel',
+                    'ID': 'ABS-007', 'Tanggal': yesterdayISO, 'NIP': '199309102019032009', 'Nama': 'Ns. Kartika Putri, S.Kep',
+                    'Shift': '4', 'Waktu Masuk': '20:25:18', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'Lokasi Masuk': 'IGD & Triase Utama', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
                     'Foto Datang': 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 }
             ];
 
-            return { absensi: demoAbsensi, shifts: demoShifts };
+            const demoSettings = [
+                {
+                    'Kunci': 'RUANGAN',
+                    'Nilai': 'IGD & Triase Utama, Poliklinik Penyakit Dalam, Instalasi Farmasi Pusat, Ruang IT & SIMRS, Laboratorium Patologi Klinik, Ruang Rawat Inap Teratai, Instalasi Gizi & Dapur, Poliklinik Anak & Tumbuh Kembang, Ruang Radiologi'
+                }
+            ];
+
+            return { absensi: demoAbsensi, shifts: demoShifts, settings: demoSettings };
         }
 
         // =========================================================================
         // 4. PENGAMBILAN & PARSING DATA GOOGLE SPREADSHEET (GVIZ / GAS / FALLBACK)
         // =========================================================================
-        function parseGvizResponse(responseText) {
-            // Ekstrak JSON dari pembungkus google.visualization.Query.setResponse(...)
-            const startIdx = responseText.indexOf('{');
-            const endIdx = responseText.lastIndexOf('}');
-            if (startIdx === -1 || endIdx === -1) throw new Error('Format respon GViz tidak valid');
-            const json = JSON.parse(responseText.substring(startIdx, endIdx + 1));
-            if (json.status === 'error') throw new Error(json.errors?.[0]?.detailed_message || 'Sheet tidak dapat diakses');
+        async function fetchSheetGviz(sheetName) {
+            const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`HTTP ${response.status}`);
+            const text = await response.text();
+            const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*?)\);/);
+            if (!match || !match[1]) throw new Error('Format GViz tidak valid');
+            const json = JSON.parse(match[1]);
+            if (json.status === 'error') throw new Error(json.errors?.[0]?.message || 'GViz Error');
 
-            const cols = json.table.cols.map(c => (c.label || c.id || '').trim());
-            const rows = json.table.rows || [];
-
-            return rows.map(row => {
+            const cols = json.table.cols.map(c => (c.label || '').trim());
+            const rows = (json.table.rows || []).map(r => {
                 const obj = {};
-                cols.forEach((colName, idx) => {
-                    if (!colName) return;
-                    const cell = row.c[idx];
-                    // Gunakan formatted value (f) jika tersedia (penting untuk tanggal & jam), fallback ke value (v)
-                    let val = '';
-                    if (cell) {
-                        val = (cell.f !== undefined && cell.f !== null) ? String(cell.f) : (cell.v !== undefined && cell.v !== null ? String(cell.v) : '');
-                    }
-                    obj[colName] = val.trim();
+                (r.c || []).forEach((cell, idx) => {
+                    const header = cols[idx] || `COL_${idx}`;
+                    obj[header] = cell ? (cell.f !== undefined && cell.f !== null ? String(cell.f) : (cell.v !== null ? String(cell.v) : '')) : '';
                 });
                 return obj;
             });
-        }
-
-        async function fetchSheetGviz(sheetName) {
-            const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-            const res = await fetch(url, { cache: 'no-store' });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const text = await res.text();
-            return parseGvizResponse(text);
+            return rows;
         }
 
         async function fetchSpreadsheetData(showNotification = false) {
@@ -951,6 +765,7 @@
             try {
                 let absensiRows = [];
                 let shiftsRows = [];
+                let settingsRows = [];
 
                 // Prioritas 1: Jika pengguna memasukkan URL Google Apps Script Web App
                 if (appState.gasWebAppUrl) {
@@ -958,27 +773,30 @@
                     const json = await res.json();
                     absensiRows = json.absensi || [];
                     shiftsRows = json.shifts || [];
+                    settingsRows = json.settings || [];
                     appState.dataMode = 'GAS';
                 } else {
                     // Prioritas 2: Direct Google Visualization API (Memerlukan spreadsheet Public / Published to web)
-                    const [absData, shiftData] = await Promise.all([
+                    const [absData, shiftData, settingsData] = await Promise.all([
                         fetchSheetGviz(SHEET_ABSENSI),
-                        fetchSheetGviz(SHEET_SHIFTS)
+                        fetchSheetGviz(SHEET_SHIFTS),
+                        fetchSheetGviz(SHEET_SETTINGS).catch(() => [])
                     ]);
                     absensiRows = absData;
                     shiftsRows = shiftData;
+                    settingsRows = settingsData;
                     appState.dataMode = 'LIVE';
                 }
 
-                processAndRenderData(absensiRows, shiftsRows);
+                processAndRenderData(absensiRows, shiftsRows, settingsRows);
                 updateConnectionBadge();
-                if (showNotification) showToast('Data berhasil disinkronkan dari Data Absensi 1.4!', 'success');
+                if (showNotification) showToast('Data berhasil disinkronkan dari Absensi 1.4', 'success');
 
             } catch (err) {
                 console.warn('Gagal mengambil live spreadsheet (kemungkinan private/CORS), beralih ke mode Demo:', err);
                 const demo = getDemoData(appState.selectedDate || getTodayISO());
                 appState.dataMode = 'DEMO';
-                processAndRenderData(demo.absensi, demo.shifts);
+                processAndRenderData(demo.absensi, demo.shifts, demo.settings);
                 updateConnectionBadge();
                 if (showNotification) showToast('Spreadsheet belum publik. Menampilkan Data Simulasi Demo.', 'warning');
             } finally {
@@ -986,233 +804,142 @@
             }
         }
 
-        function updateConnectionBadge() {
-            const badge = document.getElementById('connection-badge');
-            const text = document.getElementById('connection-text');
-            const settingsDesc = document.getElementById('settings-status-desc');
-
-            if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
-                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
-                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-emerald-500 live-dot';
-                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Absensi 1.4';
-                settingsDesc.textContent = 'Terhubung langsung ke Google Spreadsheet ID: ' + SPREADSHEET_ID;
-            } else {
-                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
-                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-amber-500 live-dot';
-                text.textContent = 'Mode Simulasi Demo';
-                settingsDesc.textContent = 'Spreadsheet belum dipublikasikan ke web. Menggunakan data simulasi lengkap agar fitur dapat langsung diuji.';
-            }
-        }
-
-        // =========================================================================
-        // 5. NORMALISASI TANGGAL, FOTO GOOGLE DRIVE & PENGGABUNGAN SHIFT
-        // =========================================================================
-        function normalizeDateToISO(rawDateStr) {
-            if (!rawDateStr) return '';
-            const clean = rawDateStr.trim().split(' ')[0]; // Ambil bagian tanggal saja jika ada timestamp
-            
-            // Sudah YYYY-MM-DD
-            if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
-
-            // Format DD/MM/YYYY atau D/M/YYYY
-            const slashMatch = clean.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
-            if (slashMatch) {
-                const day = slashMatch[1].padStart(2, '0');
-                const month = slashMatch[2].padStart(2, '0');
-                const year = slashMatch[3];
-                return `${year}-${month}-${day}`;
-            }
-
-            // Format Date(YYYY,M,D) dari GViz
-            const gvizMatch = rawDateStr.match(/Date\((\d{4}),(\d{1,2}),(\d{1,2})\)/);
-            if (gvizMatch) {
-                const year = gvizMatch[1];
-                const month = String(parseInt(gvizMatch[2], 10) + 1).padStart(2, '0');
-                const day = gvizMatch[3].padStart(2, '0');
-                return `${year}-${month}-${day}`;
-            }
-
-            return clean;
-        }
-
-        function resolveDriveImageUrl(url) {
-            if (!url || typeof url !== 'string' || url.trim() === '') return '';
-            const trimmed = url.trim();
-
-            // Deteksi ID Google Drive dari berbagai pola URL
-            // Pola 1: https://drive.google.com/open?id=FILE_ID
-            // Pola 2: https://drive.google.com/file/d/FILE_ID/view
-            // Pola 3: https://drive.google.com/uc?id=FILE_ID
-            let fileId = null;
-            const idParamMatch = trimmed.match(/[?&]id=([a-zA-Z0-9_-]+)/);
-            const filePathMatch = trimmed.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
-
-            if (idParamMatch) fileId = idParamMatch[1];
-            else if (filePathMatch) fileId = filePathMatch[1];
-
-            if (fileId) {
-                // Endpoint thumbnail/direct view Google Drive yang andal untuk tag <img>
-                return `https://lh3.googleusercontent.com/d/${fileId}=w600`;
-            }
-
-            return trimmed;
-        }
-
-        function getAvatarFallback(name) {
-            const encoded = encodeURIComponent(name || 'Petugas');
-            return `https://ui-avatars.com/api/?name=${encoded}&background=e2e8f0&color=1e293b&size=300&bold=true`;
-        }
-
         function isEmployeePulang(row) {
-            const waktuPulang = (row['Waktu Pulang'] || '').trim();
-            const status = (row['Status'] || '').trim().toLowerCase();
-            return (waktuPulang !== '' && waktuPulang !== '-') || status.includes('pulang');
+            const waktuPulang = String(row['Waktu Pulang'] || '').trim();
+            const status = String(row['Status'] || '').trim().toLowerCase();
+            if (waktuPulang && waktuPulang !== '-' && waktuPulang !== '00:00:00') return true;
+            if (status.includes('pulang')) return true;
+            return false;
         }
 
-        function isDinasLuarRow(row) {
-            const resolved = (row._resolvedRoom || '').toLowerCase();
-            const shiftCode = (row['Shift'] || '').toLowerCase();
-            const shiftKet = (row._shiftDetail?.['Keterangan'] || '').toLowerCase();
-            const status = (row['Status'] || '').toLowerCase();
+        function isDinasLuarRow(row, shiftDesc = '') {
+            const lokasi = String(row['Lokasi Masuk'] || '').toLowerCase();
+            const status = String(row['Status'] || '').toLowerCase();
+            const ketLuar = String(row['Ket Luar'] || '').toLowerCase();
+            const shift = String(row['Shift'] || '').toLowerCase();
+            const desc = String(shiftDesc || '').toLowerCase();
             return (
-                resolved.includes('dinas luar') ||
-                shiftCode === 'dl' ||
-                shiftCode.includes('dinas luar') ||
-                shiftKet.includes('dinas luar') ||
-                status.includes('dinas luar')
+                lokasi.includes('dinas luar') ||
+                status.includes('dinas luar') ||
+                desc.includes('dinas luar') ||
+                shift === 'dl' ||
+                (ketLuar.length > 0 && (lokasi === '' || lokasi === '-'))
             );
         }
 
-        function processAndRenderData(absensiRows, shiftsRows) {
+        function parseConfiguredRooms(settingsRows) {
+            const rooms = [];
+            const seen = new Set();
+            (settingsRows || []).forEach(row => {
+                const keys = Object.keys(row);
+                const kunciKey = keys.find(k => k.trim().toLowerCase() === 'kunci') || keys[0];
+                const nilaiKey = keys.find(k => k.trim().toLowerCase() === 'nilai') || keys[1];
+                const kunciVal = (kunciKey ? String(row[kunciKey] || '') : '').trim().toUpperCase();
+                if (kunciVal === 'RUANGAN' && nilaiKey) {
+                    const rawVal = String(row[nilaiKey] || '');
+                    rawVal.split(',').forEach(item => {
+                        const trimmed = item.trim();
+                        if (trimmed && trimmed !== '-' && !seen.has(trimmed.toLowerCase())) {
+                            seen.add(trimmed.toLowerCase());
+                            rooms.push(trimmed);
+                        }
+                    });
+                }
+            });
+            return rooms;
+        }
+
+        function processAndRenderData(absensiRows, shiftsRows, settingsRows = []) {
+            // Ekstrak daftar ruangan dari sheet Settings (Kunci: RUANGAN, Nilai dipisah tanda koma)
+            appState.configuredRooms = parseConfiguredRooms(settingsRows);
+
             // Bangun peta kode Shift dari sheet Shifts (Kolom A: Kode, Kolom G: Keterangan)
             const shiftsMap = {};
             (shiftsRows || []).forEach(s => {
                 const keys = Object.keys(s);
-                const code = (s['Kode'] || (keys[0] ? s[keys[0]] : '') || '').trim().toUpperCase();
-                if (code) {
-                    const keterangan = (s['Keterangan'] || (keys[6] ? s[keys[6]] : '') || '').trim();
-                    shiftsMap[code] = {
-                        ...s,
-                        'Kode': (s['Kode'] || (keys[0] ? s[keys[0]] : '') || '').trim(),
-                        'Keterangan': keterangan
+                const kode = String(s['Kode'] !== undefined ? s['Kode'] : (keys[0] ? s[keys[0]] : '')).trim();
+                const keterangan = String(s['Keterangan'] !== undefined ? s['Keterangan'] : (keys[6] ? s[keys[6]] : '')).trim();
+                if (kode) {
+                    shiftsMap[kode] = {
+                        kode,
+                        jamMasuk: String(s['Jam Masuk'] || '').trim(),
+                        toleransiDatang: String(s['Toleransi Datang (Mnt)'] || '0').trim(),
+                        jamPulang: String(s['Jam Pulang'] || '').trim(),
+                        toleransiPulang: String(s['Toleransi Pulang (Mnt)'] || '0').trim(),
+                        lintasHari: String(s['Lintas Hari'] || '').trim(),
+                        keterangan: keterangan || `Shift ${kode}`
                     };
                 }
             });
             appState.shiftsMap = shiftsMap;
+            appState.rawAbsensi = absensiRows || [];
 
-            // Sinkronisasi setiap baris Absensi dengan detail Shift & penentuan nama Ruangan/Kategori
-            appState.rawAbsensi = (absensiRows || []).map(row => {
-                const shiftCode = (row['Shift'] || '').trim();
-                const shiftDetail = shiftsMap[shiftCode.toUpperCase()] || null;
-                const rawRoom = (row['Lokasi Masuk'] || '').trim();
-                const isSpecialEmptyRoom = (rawRoom === '' || rawRoom === '-');
-                
-                // Jika Lokasi Masuk kosong atau "-", gunakan Keterangan Shift (misal: Dinas Luar, Izin, Sakit)
-                let resolvedRoom = rawRoom;
-                if (isSpecialEmptyRoom) {
-                    const shiftKet = shiftDetail && shiftDetail['Keterangan'] ? shiftDetail['Keterangan'].trim() : '';
-                    resolvedRoom = shiftKet || shiftCode || 'Keterangan Lainnya';
-                }
-
-                const mappedRow = {
-                    ...row,
-                    _isoDate: normalizeDateToISO(row['Tanggal']),
-                    _isPulang: isEmployeePulang(row),
-                    _shiftDetail: shiftDetail,
-                    _resolvedRoom: resolvedRoom,
-                    _isBottomCategory: isSpecialEmptyRoom,
-                    _fotoDatangUrl: resolveDriveImageUrl(row['Foto Datang']),
-                    _fotoPulangUrl: resolveDriveImageUrl(row['Foto Pulang'] || row['Foto Datang'])
-                };
-                mappedRow._isDinasLuar = isDinasLuarRow(mappedRow);
-                return mappedRow;
-            });
-
-            applyDateFilterAndRender();
+            filterDataBySelectedDate();
         }
 
-        function applyDateFilterAndRender() {
-            const targetDate = appState.selectedDate;
-            const yesterdayDate = getPreviousDateISO(targetDate);
-            
-            // Jika menggunakan mode Demo, regenerasi tanggal demo agar selalu cocok dengan tanggal yang dipilih pengguna
-            if (appState.dataMode === 'DEMO') {
-                const demo = getDemoData(targetDate);
-                appState.rawAbsensi = demo.absensi.map(row => {
-                    const shiftCode = (row['Shift'] || '').trim();
-                    const shiftDetail = appState.shiftsMap[shiftCode.toUpperCase()] || null;
-                    const rawRoom = (row['Lokasi Masuk'] || '').trim();
-                    const isSpecialEmptyRoom = (rawRoom === '' || rawRoom === '-');
-                    let resolvedRoom = rawRoom;
-                    if (isSpecialEmptyRoom) {
-                        const shiftKet = shiftDetail && shiftDetail['Keterangan'] ? shiftDetail['Keterangan'].trim() : '';
-                        resolvedRoom = shiftKet || shiftCode || 'Keterangan Lainnya';
-                    }
+        function filterDataBySelectedDate() {
+            const targetDate = appState.selectedDate || getTodayISO();
+            const yesterdayDate = getYesterdayISO(targetDate);
 
-                    const mappedRow = {
-                        ...row,
-                        _isoDate: row['Tanggal'] === yesterdayDate ? yesterdayDate : targetDate,
-                        _isPulang: isEmployeePulang(row),
-                        _shiftDetail: shiftDetail,
-                        _resolvedRoom: resolvedRoom,
-                        _isBottomCategory: isSpecialEmptyRoom,
-                        _fotoDatangUrl: resolveDriveImageUrl(row['Foto Datang']),
-                        _fotoPulangUrl: resolveDriveImageUrl(row['Foto Pulang'] || row['Foto Datang'])
-                    };
-                    mappedRow._isDinasLuar = isDinasLuarRow(mappedRow);
-                    return mappedRow;
+            const processed = [];
+            appState.rawAbsensi.forEach(row => {
+                const nama = String(row['Nama'] || '').trim();
+                if (!nama) return;
+
+                const rowDate = normalizeDateToISO(row['Tanggal']);
+                const shiftCode = String(row['Shift'] || '').trim();
+                const isPulang = isEmployeePulang(row);
+
+                const isToday = rowDate === targetDate;
+                const isYesterdayShift4Unreturned = (rowDate === yesterdayDate && shiftCode === '4' && !isPulang);
+
+                if (!isToday && !isYesterdayShift4Unreturned) return;
+
+                const shiftInfo = appState.shiftsMap[shiftCode] || null;
+                const shiftDesc = shiftInfo ? shiftInfo.keterangan : (shiftCode ? `Shift ${shiftCode}` : 'Tanpa Shift');
+                const rawLokasi = String(row['Lokasi Masuk'] || '').trim();
+                const isEmptyLokasi = !rawLokasi || rawLokasi === '-';
+                const resolvedRoom = isEmptyLokasi ? (shiftDesc || String(row['Status'] || 'Lainnya').trim()) : rawLokasi;
+
+                processed.push({
+                    ...row,
+                    _isPulang: isPulang,
+                    _isYesterdayShift4: isYesterdayShift4Unreturned,
+                    _shiftCode: shiftCode,
+                    _shiftDesc: shiftDesc,
+                    _resolvedRoom: resolvedRoom,
+                    _isBottomCategory: isEmptyLokasi,
+                    _isDinasLuar: isDinasLuarRow(row, shiftDesc),
+                    _fotoDatangUrl: formatPhotoUrl(row['Foto Datang']),
+                    _fotoPulangUrl: formatPhotoUrl(row['Foto Pulang'])
                 });
-            }
+            });
 
-            // Filter data:
-            // 1. Semua catatan absensi pada tanggal terpilih (targetDate)
-            // 2. Catatan absensi hari kemarin (yesterdayDate) dengan kode Shift '4' dan status belum pulang
-            appState.filteredTodayData = appState.rawAbsensi
-                .filter(r => {
-                    const isToday = r._isoDate === targetDate;
-                    const isYesterdayShift4Unreturned = (
-                        r._isoDate === yesterdayDate &&
-                        (r['Shift'] || '').trim() === '4' &&
-                        !r._isPulang
-                    );
-                    return isToday || isYesterdayShift4Unreturned;
-                })
-                .map(r => {
-                    const isCarryOver = (
-                        r._isoDate === yesterdayDate &&
-                        (r['Shift'] || '').trim() === '4' &&
-                        !r._isPulang
-                    );
-                    return {
-                        ...r,
-                        _isCarryOverShift4: isCarryOver
-                    };
-                });
-
-            // Populate dropdown filter Shift pada Slide 2
-            populateShiftFilterDropdown();
-
-            // Render seluruh tampilan
+            appState.filteredTodayData = processed;
+            populateShiftFilterOptions();
             renderRoomsSlide();
             renderActiveRoomSlides();
         }
 
-        function populateShiftFilterDropdown() {
+        function populateShiftFilterOptions() {
             const select = document.getElementById('filter-shift-select');
+            if (!select) return;
             const currentVal = select.value;
-            const uniqueShifts = new Set();
+            const codes = new Set();
             appState.filteredTodayData.forEach(r => {
-                if (r['Shift']) uniqueShifts.add(r['Shift'].trim());
+                if (r._shiftCode) codes.add(r._shiftCode);
             });
 
             let html = '<option value="ALL">Semua Shift</option>';
-            uniqueShifts.forEach(code => {
-                const detail = appState.shiftsMap[code.toUpperCase()];
-                const label = detail && detail['Keterangan'] ? `${code} - ${detail['Keterangan']}` : `Shift ${code}`;
-                html += `<option value="${code}">${label}</option>`;
+            Array.from(codes).sort().forEach(code => {
+                const info = appState.shiftsMap[code];
+                const label = info ? `${code} - ${info.keterangan}` : `Shift ${code}`;
+                html += `<option value="${escapeHtml(code)}">${escapeHtml(label)}</option>`;
             });
             select.innerHTML = html;
-            if ([...uniqueShifts].includes(currentVal)) select.value = currentVal;
+            if (Array.from(codes).includes(currentVal)) {
+                select.value = currentVal;
+            }
         }
 
         // =========================================================================
@@ -1222,14 +949,40 @@
             const data = appState.filteredTodayData;
             const searchQuery = (document.getElementById('search-room-input').value || '').toLowerCase();
 
-            // Kelompokkan data berdasarkan kolom 'Lokasi Masuk'
+            // Kelompokkan data berdasarkan kolom 'Lokasi Masuk' serta daftar ruangan dari sheet Settings
             const roomGroups = {};
+            const roomLookupByLower = {};
             let totalHadir = 0;
             let totalPulang = 0;
             let totalTelat = 0;
 
+            // 1. Daftarkan terlebih dahulu semua ruangan yang terkonfigurasi pada sheet Settings
+            (appState.configuredRooms || []).forEach(cfgRoom => {
+                const lowerKey = cfgRoom.toLowerCase();
+                if (!roomLookupByLower[lowerKey]) {
+                    roomLookupByLower[lowerKey] = cfgRoom;
+                    roomGroups[cfgRoom] = {
+                        name: cfgRoom,
+                        isBottomCategory: false,
+                        isDinasLuar: lowerKey.includes('dinas luar'),
+                        hadirCount: 0,
+                        pulangCount: 0,
+                        totalCount: 0,
+                        telatCount: 0,
+                        avatars: []
+                    };
+                }
+            });
+
+            // 2. Gabungkan dengan data kehadiran dari sheet Absensi
             data.forEach(row => {
-                const roomName = row._resolvedRoom;
+                const rawRoomName = row._resolvedRoom;
+                const lowerKey = rawRoomName.toLowerCase();
+                const roomName = roomLookupByLower[lowerKey] || rawRoomName;
+                if (!roomLookupByLower[lowerKey]) {
+                    roomLookupByLower[lowerKey] = roomName;
+                }
+
                 const isDinasLuar = Boolean(row._isDinasLuar);
                 if (!roomGroups[roomName]) {
                     roomGroups[roomName] = {
@@ -1294,15 +1047,15 @@
 
             const grid = document.getElementById('rooms-grid');
 
-            if (data.length === 0) {
+            if (roomList.length === 0) {
                 grid.innerHTML = `
                     <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
                         <div class="w-16 h-16 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-4 text-2xl">
                             <i class="fa-regular fa-calendar-xmark"></i>
                         </div>
-                        <h3 class="text-lg font-bold text-slate-800">Belum Ada Data Absensi Pada Tanggal Ini</h3>
+                        <h3 class="text-lg font-bold text-slate-800">Belum Ada Data Ruangan / Absensi Pada Tanggal Ini</h3>
                         <p class="text-sm text-slate-500 max-w-md mx-auto mt-1">
-                            Tidak ditemukan catatan kehadiran pada tanggal <span class="font-semibold text-slate-700">${appState.selectedDate}</span>. Silakan pilih tanggal lain atau klik tombol Sinkron.
+                            Tidak ditemukan catatan kehadiran maupun daftar ruangan pada tanggal <span class="font-semibold text-slate-700">${appState.selectedDate}</span>. Silakan pilih tanggal lain atau klik tombol Sinkron.
                         </p>
                     </div>
                 `;
@@ -1348,7 +1101,7 @@
                 `;
             }
 
-            // Kartu per Ruangan dari kolom Lokasi Masuk
+            // Kartu per Ruangan dari kolom Lokasi Masuk & Sheet Settings
             roomList
                 .filter(room => room.name.toLowerCase().includes(searchQuery))
                 .forEach(room => {
@@ -1359,9 +1112,27 @@
                     }).join('');
 
                     const isDinasLuarRoom = room.isDinasLuar || room.name.toLowerCase().includes('dinas luar');
+                    const hasActiveDuty = room.hadirCount > 0;
+
+                    // Keterangan status bertugas per kartu ruangan
+                    const dutyStatusBadgeHtml = isDinasLuarRoom
+                        ? `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold">
+                               <i class="fa-solid fa-briefcase text-[10px]"></i>
+                               <span>Petugas di Luar Kantor</span>
+                           </div>`
+                        : hasActiveDuty
+                            ? `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-bold">
+                                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                                   <span>Sedang Bertugas (${room.hadirCount} Hadir)</span>
+                               </div>`
+                            : `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold">
+                                   <i class="fa-solid fa-circle-minus text-slate-400 text-[10px]"></i>
+                                   <span>Tidak ada petugas yang bertugas</span>
+                               </div>`;
+
                     const statusCountersHtml = isDinasLuarRoom
                         ? `<div class="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-100">
-                               <span class="text-[11px] font-semibold text-amber-800 block">Petugas di Luar Kantor</span>
+                               <span class="text-[11px] font-semibold text-amber-800 block">Dinas Luar</span>
                            </div>`
                         : `<div class="flex items-center gap-3">
                                <div class="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-100">
@@ -1378,7 +1149,7 @@
                         <div onclick="selectRoomAndSlide('${escapeHtml(room.name)}')" class="group cursor-pointer bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
                             <div>
                                 <div class="flex items-start justify-between gap-2 mb-3.5">
-                                    <div class="w-11 h-11 rounded-2xl bg-brand-50 text-brand-600 group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-lg transition-colors">
+                                    <div class="w-11 h-11 rounded-2xl ${hasActiveDuty ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'} group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-lg transition-colors">
                                         <i class="fa-solid fa-hospital-user"></i>
                                     </div>
                                     <div class="flex -space-x-2 overflow-hidden">
@@ -1389,9 +1160,10 @@
                                 <p class="text-xs text-slate-500 mt-1">
                                     Total Tercatat: <span class="font-semibold text-slate-700">${room.totalCount} Petugas</span>
                                 </p>
+                                ${dutyStatusBadgeHtml}
                             </div>
 
-                            <div class="mt-5 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                            <div class="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between">
                                 ${statusCountersHtml}
                                 <span class="w-9 h-9 rounded-full bg-slate-100 group-hover:bg-brand-600 text-slate-600 group-hover:text-white flex items-center justify-center transition">
                                     <i class="fa-solid fa-chevron-right text-xs"></i>
@@ -1419,448 +1191,240 @@
             document.getElementById('slide3-room-heading').textContent = `Kartu Foto Hadir — ${roomLabel}`;
             document.getElementById('slide4-room-heading').textContent = `Sudah Pulang — ${roomLabel}`;
 
-            // Filter berdasarkan Ruangan terpilih
+            // Filter berdasarkan Ruangan terpilih (case-insensitive agar cocok antara Settings dan Absensi)
             const roomData = appState.filteredTodayData.filter(row => {
                 if (roomFilter === 'ALL') return true;
-                return row._resolvedRoom === roomFilter;
+                return row._resolvedRoom.toLowerCase() === roomFilter.toLowerCase();
             });
 
             // Pisahkan secara tegas antara PETUGAS HADIR (belum pulang) vs PETUGAS SUDAH PULANG
-            const hadirListRaw = roomData.filter(r => !r._isPulang);
+            const hadirList = roomData.filter(r => !r._isPulang);
             const pulangList = roomData.filter(r => r._isPulang);
 
-            // Terapkan pencarian nama dan filter shift pada daftar hadir
-            const hadirList = hadirListRaw.filter(r => {
-                const matchName = (r['Nama'] || '').toLowerCase().includes(searchHadir);
-                const matchShift = shiftFilter === 'ALL' || (r['Shift'] || '').trim() === shiftFilter;
+            // Update Badge Counter di Tab Navigasi
+            document.getElementById('badge-count-hadir-card').textContent = hadirList.length;
+            document.getElementById('badge-count-hadir-1').textContent = hadirList.length;
+            document.getElementById('badge-count-pulang').textContent = pulangList.length;
+
+            // Terapkan filter pencarian & shift untuk daftar hadir
+            const filteredHadir = hadirList.filter(r => {
+                const matchName = String(r['Nama'] || '').toLowerCase().includes(searchHadir);
+                const matchShift = shiftFilter === 'ALL' || r._shiftCode === shiftFilter;
                 return matchName && matchShift;
             });
 
-            // Update badge counter pada tab navigasi
-            document.getElementById('badge-count-hadir-card').textContent = hadirListRaw.length;
-            document.getElementById('badge-count-hadir-1').textContent = hadirListRaw.length;
-            document.getElementById('badge-count-pulang').textContent = pulangList.length;
+            // Render Slide 2: Kartu Foto Hadir
+            const cardsGrid = document.getElementById('hadir-cards-grid');
+            if (filteredHadir.length === 0) {
+                cardsGrid.innerHTML = `
+                    <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
+                        <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl">
+                            <i class="fa-solid fa-user-slash"></i>
+                        </div>
+                        <h3 class="text-base font-bold text-slate-800">Tidak Ada Petugas yang Sedang Bertugas</h3>
+                        <p class="text-xs text-slate-500 mt-1">Belum ada absensi masuk atau seluruh petugas di lokasi ini sudah pulang.</p>
+                    </div>
+                `;
+            } else {
+                cardsGrid.innerHTML = filteredHadir.map(row => {
+                    const nama = escapeHtml(row['Nama']);
+                    const fallback = getAvatarFallback(row['Nama']);
+                    const fotoSrc = row._fotoDatangUrl || fallback;
+                    const waktuMasuk = escapeHtml(row['Waktu Masuk'] || '-');
+                    const roomName = escapeHtml(row._resolvedRoom);
+                    const shiftLabel = escapeHtml(row._shiftCode ? `${row._shiftCode} • ${row._shiftDesc}` : row._shiftDesc);
+                    const yesterdayBadge = row._isYesterdayShift4
+                        ? `<span class="mt-2 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                               <i class="fa-solid fa-clock-rotate-left"></i> belum pulang sift kemarin
+                           </span>`
+                        : '';
 
-            renderSlide2Table(hadirList);
-            renderSlide3Cards(hadirList);
-            renderSlide4Pulang(pulangList);
-        }
+                    return `
+                        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-lg transition overflow-hidden flex flex-col">
+                            <div onclick="openPhotoModal('${fotoSrc}', '${nama}', '${roomName} • ${shiftLabel}', 'Waktu Masuk: ${waktuMasuk}', 'Foto Absen Datang', 'emerald')" class="relative aspect-[4/3] bg-slate-100 cursor-pointer group overflow-hidden">
+                                <img src="${fotoSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
+                                <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-600 text-white shadow">
+                                    HADIR
+                                </span>
+                                <span class="absolute bottom-3 right-3 px-2.5 py-1 rounded-xl text-xs font-mono font-bold bg-slate-900/80 text-white backdrop-blur-sm">
+                                    <i class="fa-regular fa-clock mr-1 text-emerald-400"></i>${waktuMasuk}
+                                </span>
+                            </div>
+                            <div class="p-4 flex-1 flex flex-col justify-between">
+                                <div>
+                                    <h4 class="font-bold text-slate-900 text-sm sm:text-base line-clamp-1" title="${nama}">${nama}</h4>
+                                    <p class="text-xs text-slate-500 mt-0.5 flex items-center gap-1.5">
+                                        <i class="fa-solid fa-location-dot text-brand-500"></i>
+                                        <span class="truncate">${roomName}</span>
+                                    </p>
+                                    <p class="text-xs text-slate-600 mt-1.5 bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-100 font-medium">
+                                        <i class="fa-solid fa-business-time text-indigo-500 mr-1"></i>${shiftLabel}
+                                    </p>
+                                    ${yesterdayBadge}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
 
-        // --- SLIDE 2: Tabel/List Ringkas Nama yang Hadir ---
-        function renderSlide2Table(hadirList) {
+            // Render Slide 3: Tabel Daftar Hadir
             const tbody = document.getElementById('hadir-table-body');
-
-            if (hadirList.length === 0) {
+            if (filteredHadir.length === 0) {
                 tbody.innerHTML = `
                     <tr>
-                        <td colspan="5" class="py-12 px-4 text-center">
-                            <div class="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl">
-                                <i class="fa-solid fa-user-slash"></i>
-                            </div>
-                            <p class="text-sm font-bold text-slate-700">Tidak ada petugas yang sedang hadir</p>
-                            <p class="text-xs text-slate-500 mt-1">Semua petugas pada filter ini mungkin sudah pulang atau belum melakukan absen masuk.</p>
+                        <td colspan="5" class="py-10 px-4 text-center text-slate-500 text-sm">
+                            Tidak ada petugas yang sedang bertugas pada filter ini.
                         </td>
                     </tr>
                 `;
-                return;
-            }
+            } else {
+                tbody.innerHTML = filteredHadir.map((row, idx) => {
+                    const nama = escapeHtml(row['Nama']);
+                    const fallback = getAvatarFallback(row['Nama']);
+                    const fotoSrc = row._fotoDatangUrl || fallback;
+                    const roomName = escapeHtml(row._resolvedRoom);
+                    const shiftKode = escapeHtml(row._shiftCode || '-');
+                    const shiftKet = escapeHtml(row._shiftDesc || '-');
+                    const waktuMasuk = escapeHtml(row['Waktu Masuk'] || '-');
+                    const yesterdayTag = row._isYesterdayShift4
+                        ? `<span class="ml-1.5 inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800">belum pulang sift kemarin</span>`
+                        : '';
 
-            tbody.innerHTML = hadirList.map((row, idx) => {
-                const fallback = getAvatarFallback(row['Nama']);
-                const photoUrl = row._fotoDatangUrl || fallback;
-                const shiftCode = (row._shiftDetail?.['Kode'] || row['Shift'] || '-').trim();
-                const shiftDesc = (row._shiftDetail?.['Keterangan'] || '').trim();
-                const shiftSchedule = (row._shiftDetail?.['Jam Masuk'] && row._shiftDetail?.['Jam Pulang'])
-                    ? `${row._shiftDetail['Jam Masuk']} - ${row._shiftDetail['Jam Pulang']}`
-                    : '';
-                const shiftKeteranganLabel = shiftDesc || shiftSchedule || `Shift ${shiftCode}`;
-                const carryOverBadge = row._isCarryOverShift4
-                    ? `<span class="inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200"><i class="fa-solid fa-clock-rotate-left"></i> belum pulang sift kemarin</span>`
-                    : '';
-
-                return `
-                    <tr class="hover:bg-slate-50/90 transition ${row._isCarryOverShift4 ? 'bg-amber-50/35' : ''}">
-                        <td class="py-3.5 px-4 text-xs font-bold text-slate-400">${idx + 1}</td>
-                        <td class="py-3.5 px-4">
-                            <div class="flex items-center gap-3">
-                                <img src="${photoUrl}" onerror="this.onerror=null;this.src='${fallback}'" alt="${row['Nama']}"
-                                     onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}${row._isCarryOverShift4 ? ' (belum pulang sift kemarin)' : ''}', '${photoUrl}', 'Foto Absen Datang')"
-                                     class="w-10 h-10 rounded-xl object-cover border border-slate-200 cursor-pointer hover:scale-105 transition shrink-0">
-                                <div>
-                                    <p class="font-bold text-slate-900 leading-snug">${row['Nama'] || '-'}</p>
-                                    ${carryOverBadge}
-                                </div>
-                            </div>
-                        </td>
-                        <td class="py-3.5 px-4">
-                            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                                <i class="fa-solid fa-location-dot text-brand-600"></i>
-                                ${row._resolvedRoom || '-'}
-                            </span>
-                        </td>
-                        <td class="py-3.5 px-4">
-                            <div class="flex items-center gap-1.5">
-                                <span class="px-2 py-0.5 rounded-md text-xs font-extrabold bg-indigo-100 text-indigo-800">${shiftCode}</span>
-                                <span class="text-xs font-semibold text-slate-700">${shiftKeteranganLabel}</span>
-                            </div>
-                            ${(shiftDesc && shiftSchedule && !shiftDesc.includes(shiftSchedule)) ? `<p class="text-[11px] text-slate-400 mt-0.5">${shiftSchedule}</p>` : ''}
-                        </td>
-                        <td class="py-3.5 px-4">
-                            <span class="font-mono text-sm font-bold text-emerald-700 bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-200/70">
-                                ${row['Waktu Masuk'] || '-'}
-                            </span>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        }
-
-        // --- SLIDE 3: Kartu Petugas Hadir dengan Foto Datang ---
-        function renderSlide3Cards(hadirList) {
-            const grid = document.getElementById('hadir-cards-grid');
-
-            if (hadirList.length === 0) {
-                grid.innerHTML = `
-                    <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
-                        <p class="text-sm font-bold text-slate-700">Tidak ada kartu petugas hadir untuk ditampilkan</p>
-                        <p class="text-xs text-slate-500 mt-1">Geser ke kanan untuk melihat daftar petugas yang sudah pulang.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            grid.innerHTML = hadirList.map(row => {
-                const fallback = getAvatarFallback(row['Nama']);
-                const photoUrl = row._fotoDatangUrl || fallback;
-                const shiftCode = (row._shiftDetail?.['Kode'] || row['Shift'] || '-').trim();
-                const shiftDesc = (row._shiftDetail?.['Keterangan'] || '').trim();
-                const shiftSchedule = (row._shiftDetail?.['Jam Masuk'] && row._shiftDetail?.['Jam Pulang'])
-                    ? `${row._shiftDetail['Jam Masuk']} - ${row._shiftDetail['Jam Pulang']}`
-                    : '';
-                const shiftKeterangan = shiftDesc || shiftSchedule || `Shift ${shiftCode}`;
-                const carryOverBadge = row._isCarryOverShift4
-                    ? `<div class="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                           <i class="fa-solid fa-clock-rotate-left"></i>
-                           <span>belum pulang sift kemarin</span>
-                       </div>`
-                    : '';
-
-                return `
-                    <div class="bg-white rounded-3xl overflow-hidden border ${row._isCarryOverShift4 ? 'border-amber-300 ring-1 ring-amber-200' : 'border-slate-200/90'} shadow-sm hover:shadow-xl transition-all duration-300 flex flex-col group">
-                        <!-- Foto Absen Datang -->
-                        <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', '${escapeHtml(row['Waktu Masuk'])}${row._isCarryOverShift4 ? ' (belum pulang sift kemarin)' : ''}', '${photoUrl}', 'Foto Absen Datang')"
-                             class="relative aspect-[4/3] bg-slate-100 overflow-hidden cursor-pointer">
-                            <img src="${photoUrl}" onerror="this.onerror=null;this.src='${fallback}'" alt="Foto ${row['Nama']}"
-                                 class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500">
-                            <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-transparent to-transparent"></div>
-                            
-                            <!-- Top Badges -->
-                            <div class="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
-                                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold ${row._isCarryOverShift4 ? 'bg-amber-500/95' : 'bg-emerald-500/95'} text-white shadow-sm backdrop-blur-sm flex items-center gap-1.5">
-                                    <span class="w-1.5 h-1.5 rounded-full bg-white animate-ping"></span>
-                                    ${row._isCarryOverShift4 ? 'SIFT KEMARIN' : 'HADIR'}
-                                </span>
-                                <span class="px-2.5 py-1 rounded-full text-[11px] font-extrabold bg-slate-900/80 text-white backdrop-blur-sm">
-                                    Shift ${shiftCode}
-                                </span>
-                            </div>
-
-                            <!-- Bottom Arrival Time Overlay -->
-                            <div class="absolute bottom-3 left-3 right-3 flex items-end justify-between text-white">
-                                <div>
-                                    <span class="text-[10px] uppercase tracking-wider text-slate-300 block">Jam Kedatangan</span>
-                                    <span class="font-mono text-lg font-extrabold tracking-tight text-emerald-300">${row['Waktu Masuk'] || '-'}</span>
-                                </div>
-                                <span class="w-8 h-8 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center text-xs">
-                                    <i class="fa-solid fa-expand"></i>
-                                </span>
-                            </div>
-                        </div>
-
-                        <!-- Identitas Petugas -->
-                        <div class="p-4 flex-1 flex flex-col justify-between">
-                            <div>
-                                <h3 class="font-bold text-slate-900 text-base leading-snug line-clamp-2">${row['Nama'] || '-'}</h3>
-                                ${carryOverBadge}
-                                
-                                <div class="mt-3 space-y-1.5 text-xs text-slate-600">
-                                    <div class="flex items-center gap-2">
-                                        <i class="fa-solid fa-location-dot text-brand-600 w-3.5 text-center shrink-0"></i>
-                                        <span class="font-medium truncate">${row._resolvedRoom || '-'}</span>
-                                    </div>
-                                    <div class="flex items-start gap-2">
-                                        <i class="fa-regular fa-clock text-indigo-600 w-3.5 text-center mt-0.5 shrink-0"></i>
-                                        <div class="min-w-0 flex-1">
-                                            <span class="inline-block px-1.5 py-0.2 rounded text-[10px] font-extrabold bg-indigo-100 text-indigo-800 mr-1">${shiftCode}</span>
-                                            <span class="font-semibold text-slate-700">${shiftKeterangan}</span>
-                                        </div>
+                    return `
+                        <tr class="hover:bg-slate-50/90 transition">
+                            <td class="py-3.5 px-4 font-mono text-xs text-slate-500">${idx + 1}</td>
+                            <td class="py-3.5 px-4">
+                                <div class="flex items-center gap-3">
+                                    <img src="${fotoSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" onclick="openPhotoModal('${fotoSrc}', '${nama}', '${roomName}', 'Waktu Masuk: ${waktuMasuk}', 'Foto Absen Datang', 'emerald')" class="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100 cursor-pointer shrink-0">
+                                    <div>
+                                        <span class="font-bold text-slate-900">${nama}</span>
+                                        ${yesterdayTag}
                                     </div>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
-        }
+                            </td>
+                            <td class="py-3.5 px-4 text-xs font-semibold text-slate-700">${roomName}</td>
+                            <td class="py-3.5 px-4">
+                                <span class="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-bold bg-indigo-50 text-indigo-700 border border-indigo-100 mr-1">${shiftKode}</span>
+                                <span class="text-xs text-slate-600">${shiftKet}</span>
+                            </td>
+                            <td class="py-3.5 px-4">
+                                <span class="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                                    ${waktuMasuk}
+                                </span>
+                            </td>
+                        </tr>
+                    `;
+                }).join('');
+            }
 
-        // --- SLIDE 4: Daftar Karyawan dengan Status Pulang (Eksklusif) ---
-        function renderSlide4Pulang(pulangList) {
-            const grid = document.getElementById('pulang-cards-grid');
-
+            // Render Slide 4: Daftar Petugas Sudah Pulang
+            const pulangGrid = document.getElementById('pulang-cards-grid');
             if (pulangList.length === 0) {
-                grid.innerHTML = `
+                pulangGrid.innerHTML = `
                     <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
-                        <div class="w-14 h-14 rounded-2xl bg-rose-50 text-rose-400 flex items-center justify-center mx-auto mb-3 text-2xl">
-                            <i class="fa-solid fa-person-walking-luggage"></i>
+                        <div class="w-14 h-14 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto mb-3 text-xl">
+                            <i class="fa-solid fa-person-walking-arrow-right"></i>
                         </div>
                         <h3 class="text-base font-bold text-slate-800">Belum Ada Petugas yang Pulang</h3>
-                        <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                            Semua petugas di ruangan ini masih aktif bertugas (belum mencatat waktu pulang).
-                        </p>
+                        <p class="text-xs text-slate-500 mt-1">Seluruh petugas yang hadir masih aktif bertugas.</p>
                     </div>
                 `;
-                return;
-            }
+            } else {
+                pulangGrid.innerHTML = pulangList.map(row => {
+                    const nama = escapeHtml(row['Nama']);
+                    const fallback = getAvatarFallback(row['Nama']);
+                    const fotoPulang = row._fotoPulangUrl || row._fotoDatangUrl || fallback;
+                    const roomName = escapeHtml(row._resolvedRoom);
+                    const waktuMasuk = escapeHtml(row['Waktu Masuk'] || '-');
+                    const waktuPulang = escapeHtml(row['Waktu Pulang'] || '-');
+                    const shiftLabel = escapeHtml(row._shiftCode ? `${row._shiftCode} • ${row._shiftDesc}` : row._shiftDesc);
 
-            grid.innerHTML = pulangList.map(row => {
-                const fallback = getAvatarFallback(row['Nama']);
-                const fotoPulang = row._fotoPulangUrl || fallback;
-                const fotoDatang = row._fotoDatangUrl || fallback;
-                const shiftCode = row['Shift'] || '-';
-
-                return `
-                    <div class="bg-white rounded-3xl p-4 border border-slate-200/90 shadow-sm hover:shadow-lg transition flex flex-col justify-between">
-                        <div class="flex items-start gap-3.5">
-                            <!-- Foto Pulang (dengan klik preview) -->
-                            <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', 'Pulang: ${escapeHtml(row['Waktu Pulang'])}', '${fotoPulang}', 'Foto Absen Pulang')"
-                                 class="relative w-20 h-24 rounded-2xl overflow-hidden bg-slate-100 border border-slate-200 shrink-0 cursor-pointer group">
-                                <img src="${fotoPulang}" onerror="this.onerror=null;this.src='${fallback}'" alt="${row['Nama']}"
-                                     class="w-full h-full object-cover group-hover:scale-105 transition">
-                                <span class="absolute bottom-1 inset-x-1 text-center text-[9px] font-bold bg-rose-600/90 text-white rounded py-0.5">
-                                    PULANG
-                                </span>
-                            </div>
-
-                            <!-- Info Petugas -->
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between gap-1">
-                                    <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700">
-                                        Shift ${shiftCode}
-                                    </span>
-                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
-                                        ${row['Status'] || 'Sudah Pulang'}
-                                    </span>
+                    return `
+                        <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm p-4 flex items-center gap-4">
+                            <img src="${fotoPulang}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" onclick="openPhotoModal('${fotoPulang}', '${nama}', '${roomName} • ${shiftLabel}', 'Masuk: ${waktuMasuk} | Pulang: ${waktuPulang}', 'Foto Absen Pulang', 'rose')" class="w-20 h-20 rounded-2xl object-cover ring-2 ring-rose-100 cursor-pointer shrink-0">
+                            <div class="min-w-0 flex-1">
+                                <span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-700 mb-1">SUDAH PULANG</span>
+                                <h4 class="font-bold text-slate-900 text-sm truncate" title="${nama}">${nama}</h4>
+                                <p class="text-xs text-slate-500 truncate">${roomName}</p>
+                                <div class="mt-2 flex items-center gap-2 text-[11px] font-mono">
+                                    <span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700">In: <b>${waktuMasuk}</b></span>
+                                    <span class="px-2 py-0.5 rounded bg-rose-50 text-rose-700">Out: <b>${waktuPulang}</b></span>
                                 </div>
-                                <h3 class="font-bold text-slate-900 text-sm sm:text-base mt-1.5 truncate">${row['Nama'] || '-'}</h3>
-                                <p class="text-xs text-slate-600 mt-1 truncate">
-                                    <i class="fa-solid fa-location-dot text-slate-400 mr-1"></i>${row._resolvedRoom || '-'}
-                                </p>
                             </div>
                         </div>
-
-                        <!-- Waktu Masuk & Waktu Pulang Comparison -->
-                        <div class="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
-                                <span class="text-[10px] text-slate-400 block">Waktu Masuk</span>
-                                <span class="font-mono font-bold text-slate-700">${row['Waktu Masuk'] || '-'}</span>
-                            </div>
-                            <div class="bg-rose-50/70 rounded-xl p-2.5 border border-rose-100">
-                                <span class="text-[10px] text-rose-500 block">Waktu Pulang</span>
-                                <span class="font-mono font-bold text-rose-700">${row['Waktu Pulang'] || '-'}</span>
-                            </div>
-                        </div>
-
-                        <!-- Foto Datang Link -->
-                        ${row['Foto Datang'] ? `
-                            <div class="mt-3 flex items-center justify-end text-[11px]">
-                                <button onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', 'Masuk: ${escapeHtml(row['Waktu Masuk'])}', '${fotoDatang}', 'Foto Absen Datang')"
-                                        class="text-brand-600 hover:underline font-semibold">
-                                    Lihat Foto Datang
-                                </button>
-                            </div>
-                        ` : ''}
-                    </div>
-                `;
-            }).join('');
-        }
-
-        // --- SLIDE 5: Daftar Absensi Kode 4 (Kehadiran Kemarin Status Belum Pulang) ---
-        function renderSlide5Kode4(kode4List, yesterdayISO) {
-            const grid = document.getElementById('kode4-cards-grid');
-
-            if (kode4List.length === 0) {
-                grid.innerHTML = `
-                    <div class="col-span-full bg-white rounded-3xl p-10 text-center border border-slate-200 shadow-sm">
-                        <div class="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-500 flex items-center justify-center mx-auto mb-3 text-2xl">
-                            <i class="fa-solid fa-circle-check"></i>
-                        </div>
-                        <h3 class="text-base font-bold text-slate-800">Tidak Ada Absensi Kode 4</h3>
-                        <p class="text-xs text-slate-500 max-w-md mx-auto mt-1">
-                            Seluruh petugas yang hadir pada tanggal <span class="font-semibold text-slate-700">${yesterdayISO}</span> sudah tercatat melakukan absen pulang.
-                        </p>
-                    </div>
-                `;
-                return;
+                    `;
+                }).join('');
             }
-
-            grid.innerHTML = kode4List.map(row => {
-                const fallback = getAvatarFallback(row['Nama']);
-                const fotoDatang = row._fotoDatangUrl || fallback;
-                const shiftCode = row['Shift'] || '-';
-
-                return `
-                    <div class="bg-white rounded-3xl p-4 border border-amber-200/90 shadow-sm hover:shadow-lg transition flex flex-col justify-between">
-                        <div class="flex items-start gap-3.5">
-                            <!-- Foto Datang Kemarin -->
-                            <div onclick="openPhotoModal('${escapeHtml(row['Nama'])}', '${escapeHtml(row._resolvedRoom)}', '${escapeHtml(shiftCode)}', 'Kemarin (${escapeHtml(yesterdayISO)}) Masuk: ${escapeHtml(row['Waktu Masuk'])}', '${fotoDatang}', 'Kode 4 • Foto Datang Kemarin')"
-                                 class="relative w-20 h-24 rounded-2xl overflow-hidden bg-slate-100 border border-amber-200 shrink-0 cursor-pointer group">
-                                <img src="${fotoDatang}" onerror="this.onerror=null;this.src='${fallback}'" alt="${row['Nama']}"
-                                     class="w-full h-full object-cover group-hover:scale-105 transition">
-                                <span class="absolute bottom-1 inset-x-1 text-center text-[9px] font-extrabold bg-amber-600/95 text-white rounded py-0.5">
-                                    KODE 4
-                                </span>
-                            </div>
-
-                            <!-- Info Petugas -->
-                            <div class="flex-1 min-w-0">
-                                <div class="flex items-center justify-between gap-1">
-                                    <span class="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-slate-100 text-slate-700">
-                                        Shift ${shiftCode}
-                                    </span>
-                                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200">
-                                        Belum Pulang
-                                    </span>
-                                </div>
-                                <h3 class="font-bold text-slate-900 text-sm sm:text-base mt-1.5 truncate">${row['Nama'] || '-'}</h3>
-                                <p class="text-xs text-slate-600 mt-1 truncate">
-                                    <i class="fa-solid fa-location-dot text-amber-600 mr-1"></i>${row._resolvedRoom || '-'}
-                                </p>
-                            </div>
-                        </div>
-
-                        <!-- Info Waktu Masuk Kemarin & Status Pulang -->
-                        <div class="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-                            <div class="bg-slate-50 rounded-xl p-2.5 border border-slate-100">
-                                <span class="text-[10px] text-slate-400 block">Masuk (${yesterdayISO})</span>
-                                <span class="font-mono font-bold text-slate-700">${row['Waktu Masuk'] || '-'}</span>
-                            </div>
-                            <div class="bg-amber-50 rounded-xl p-2.5 border border-amber-200/70">
-                                <span class="text-[10px] text-amber-700 block">Waktu Pulang</span>
-                                <span class="font-mono font-bold text-amber-800">Belum Absen</span>
-                            </div>
-                        </div>
-                    </div>
-                `;
-            }).join('');
         }
 
         // =========================================================================
-        // 8. NAVIGASI SLIDE (KLIK, KEYBOARD ARROW, & TOUCH SWIPE GESTURE)
+        // 8. NAVIGASI SLIDER (KLIK, KEYBOARD ARROW, TOUCH SWIPE) & AUTO-SYNC
         // =========================================================================
-        async function selectRoomAndSlide(roomName) {
+        function selectRoomAndSlide(roomName) {
             appState.selectedRoom = roomName;
             renderActiveRoomSlides();
-            goToSlide(1); // Otomatis slide ke Kartu Foto Hadir untuk ruangan terpilih
-            await fetchSpreadsheetData(false); // Sinkronisasi otomatis setiap klik kartu ruangan
+            goToSlide(1);
+            fetchSpreadsheetData(false);
         }
 
-        function goToSlide(slideIndex) {
-            const clamped = Math.max(0, Math.min(3, slideIndex));
+        function goToSlide(index) {
+            const clamped = Math.max(0, Math.min(3, index));
             appState.currentSlide = clamped;
-
             const track = document.getElementById('slides-track');
-            track.style.transform = `translateX(-${clamped * 25}%)`;
-
-            // Update tombol kembali ke pilihan ruangan
-            const btnBack = document.getElementById('btn-back-rooms');
-            if (clamped > 0) {
-                btnBack.classList.remove('hidden');
-                btnBack.classList.add('inline-flex');
-            } else {
-                btnBack.classList.add('hidden');
-                btnBack.classList.remove('inline-flex');
+            if (track) {
+                track.style.transform = `translateX(-${clamped * 25}%)`;
             }
 
-            // Update status aktif tab navigasi
-            document.querySelectorAll('.slide-tab').forEach(tab => {
-                const idx = parseInt(tab.getAttribute('data-slide-tab'), 10);
-                if (idx === clamped) {
-                    tab.className = 'slide-tab px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 bg-brand-600 text-white shadow-sm';
+            const btnBack = document.getElementById('btn-back-rooms');
+            if (btnBack) {
+                if (clamped === 0) {
+                    btnBack.classList.add('hidden');
+                    btnBack.classList.remove('inline-flex');
                 } else {
-                    tab.className = 'slide-tab px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 bg-slate-100 text-slate-600 hover:bg-slate-200';
+                    btnBack.classList.remove('hidden');
+                    btnBack.classList.add('inline-flex');
+                }
+            }
+
+            document.querySelectorAll('.slide-tab').forEach(tab => {
+                const tabIdx = parseInt(tab.getAttribute('data-slide-tab'), 10);
+                if (tabIdx === clamped) {
+                    tab.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
+                    tab.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
+                } else {
+                    tab.classList.remove('bg-brand-600', 'text-white', 'shadow-sm');
+                    tab.classList.add('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
                 }
             });
 
-            // Update tombol panah prev/next
-            document.getElementById('btn-prev-slide').disabled = (clamped === 0);
-            document.getElementById('btn-next-slide').disabled = (clamped === 3);
-
-            // Scroll ke atas secara halus saat berpindah slide
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-
-        function nextSlide() {
-            if (appState.currentSlide < 3) goToSlide(appState.currentSlide + 1);
+            const btnPrev = document.getElementById('btn-prev-slide');
+            const btnNext = document.getElementById('btn-next-slide');
+            if (btnPrev) btnPrev.disabled = clamped === 0;
+            if (btnNext) btnNext.disabled = clamped === 3;
         }
 
         function prevSlide() {
-            if (appState.currentSlide > 0) goToSlide(appState.currentSlide - 1);
+            goToSlide(appState.currentSlide - 1);
         }
 
-        // Dukungan Keyboard Arrow Kiri & Kanan
-        document.addEventListener('keydown', (e) => {
-            if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-            if (e.key === 'ArrowRight') nextSlide();
-            if (e.key === 'ArrowLeft') prevSlide();
-            if (e.key === 'Escape') {
-                closePhotoModal();
-                closePasswordModal();
-                toggleSettingsModal(false);
-            }
-        });
-
-        // Dukungan Gesture Sentuh (Touch Swipe Kiri & Kanan untuk Layar Sentuh / Kiosk)
-        function initTouchSwipe() {
-            const viewport = document.getElementById('slider-viewport');
-            let touchStartX = 0;
-            let touchStartY = 0;
-
-            viewport.addEventListener('touchstart', (e) => {
-                touchStartX = e.changedTouches[0].screenX;
-                touchStartY = e.changedTouches[0].screenY;
-            }, { passive: true });
-
-            viewport.addEventListener('touchend', (e) => {
-                const touchEndX = e.changedTouches[0].screenX;
-                const touchEndY = e.changedTouches[0].screenY;
-                const deltaX = touchEndX - touchStartX;
-                const deltaY = touchEndY - touchStartY;
-
-                // Pastikan gerakan dominan horizontal dan melewati ambang batas 60px
-                if (Math.abs(deltaX) > 60 && Math.abs(deltaX) > Math.abs(deltaY) * 1.4) {
-                    if (deltaX < 0) nextSlide();
-                    else prevSlide();
-                }
-            }, { passive: true });
+        function nextSlide() {
+            goToSlide(appState.currentSlide + 1);
         }
 
         // =========================================================================
-        // 9. MODAL FOTO, PENGATURAN APPS SCRIPT, & UTILITAS
+        // 9. MODAL FOTO, PASSWORD SETTINGS (300603), CLOCK & NOTIFIKASI
         // =========================================================================
-        function openPhotoModal(name, room, shift, timeLabel, imgUrl, badgeText) {
+        function openPhotoModal(src, name, meta, timeText, badgeText, colorTheme) {
             const modal = document.getElementById('photo-modal');
-            const img = document.getElementById('modal-photo-img');
-            const fallback = getAvatarFallback(name);
-
-            img.src = imgUrl || fallback;
-            img.onerror = () => { img.src = fallback; };
-
+            document.getElementById('modal-photo-img').src = src;
             document.getElementById('modal-photo-name').textContent = name;
-            document.getElementById('modal-photo-meta').textContent = `${room} • Shift ${shift}`;
-            document.getElementById('modal-photo-time').textContent = timeLabel;
-            document.getElementById('modal-photo-badge').textContent = badgeText;
-            document.getElementById('modal-photo-link').href = imgUrl || '#';
-
+            document.getElementById('modal-photo-meta').textContent = meta;
+            document.getElementById('modal-photo-time').textContent = timeText;
+            document.getElementById('modal-photo-link').href = src;
+            const badge = document.getElementById('modal-photo-badge');
+            badge.textContent = badgeText;
+            badge.className = `absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow ${colorTheme === 'rose' ? 'bg-rose-600' : 'bg-emerald-600'}`;
             modal.classList.remove('hidden');
             modal.classList.add('flex');
         }
@@ -1890,21 +1454,19 @@
 
         function verifySettingsPassword(event) {
             event.preventDefault();
-            const inputVal = document.getElementById('settings-password-input').value.trim();
-            const errMsg = document.getElementById('password-error-msg');
-            if (inputVal === '300603') {
+            const val = document.getElementById('settings-password-input').value.trim();
+            if (val === '300603') {
                 closePasswordModal();
                 toggleSettingsModal(true);
             } else {
-                errMsg.classList.remove('hidden');
-                document.getElementById('settings-password-input').select();
+                document.getElementById('password-error-msg').classList.remove('hidden');
             }
         }
 
         function toggleSettingsModal(show) {
             const modal = document.getElementById('settings-modal');
             if (show) {
-                document.getElementById('gas-url-input').value = appState.gasWebAppUrl;
+                document.getElementById('gas-url-input').value = appState.gasWebAppUrl || '';
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
             } else {
@@ -1914,25 +1476,15 @@
         }
 
         function saveGasUrl() {
-            const val = document.getElementById('gas-url-input').value.trim();
-            appState.gasWebAppUrl = val;
-            localStorage.setItem('epresensi_gas_url', val);
+            const url = document.getElementById('gas-url-input').value.trim();
+            appState.gasWebAppUrl = url;
+            if (url) {
+                localStorage.setItem('epresensi_gas_url', url);
+            } else {
+                localStorage.removeItem('epresensi_gas_url');
+            }
             toggleSettingsModal(false);
             fetchSpreadsheetData(true);
-        }
-
-        function switchDataMode(mode) {
-            if (mode === 'DEMO') {
-                const demo = getDemoData(appState.selectedDate);
-                appState.dataMode = 'DEMO';
-                processAndRenderData(demo.absensi, demo.shifts);
-                updateConnectionBadge();
-                toggleSettingsModal(false);
-                showToast('Beralih ke Mode Data Simulasi Demo', 'info');
-            } else {
-                toggleSettingsModal(false);
-                fetchSpreadsheetData(true);
-            }
         }
 
         function copyGasCode() {
@@ -1946,57 +1498,125 @@
             showToast('Kode Google Apps Script berhasil disalin!', 'success');
         }
 
+        function switchDataMode(mode) {
+            if (mode === 'DEMO') {
+                const demo = getDemoData(appState.selectedDate);
+                appState.dataMode = 'DEMO';
+                processAndRenderData(demo.absensi, demo.shifts, demo.settings);
+                updateConnectionBadge();
+                toggleSettingsModal(false);
+                showToast('Beralih ke Mode Data Simulasi Demo', 'info');
+            } else {
+                toggleSettingsModal(false);
+                fetchSpreadsheetData(true);
+            }
+        }
+
+        function updateConnectionBadge() {
+            const badge = document.getElementById('connection-badge');
+            const text = document.getElementById('connection-text');
+            const desc = document.getElementById('settings-status-desc');
+            if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
+                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-emerald-500 live-dot';
+                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Spreadsheet';
+                if (desc) desc.textContent = `Terhubung langsung ke Google Spreadsheet (${appState.dataMode}).`;
+            } else {
+                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
+                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-amber-500 live-dot';
+                text.textContent = 'Mode Simulasi Demo';
+                if (desc) desc.textContent = 'Menampilkan data simulasi karena spreadsheet belum dipublikasikan ke web.';
+            }
+        }
+
+        let toastTimer = null;
         function showToast(message, type = 'info') {
             const box = document.getElementById('toast-box');
-            const msg = document.getElementById('toast-message');
-            const icon = document.getElementById('toast-icon');
-
-            msg.textContent = message;
-            if (type === 'success') icon.className = 'fa-solid fa-circle-check text-emerald-400';
-            else if (type === 'warning') icon.className = 'fa-solid fa-triangle-exclamation text-amber-400';
-            else icon.className = 'fa-solid fa-circle-info text-brand-400';
-
+            const msgEl = document.getElementById('toast-message');
+            const iconEl = document.getElementById('toast-icon');
+            msgEl.textContent = message;
+            iconEl.className = type === 'success'
+                ? 'fa-solid fa-circle-check text-emerald-400'
+                : type === 'warning'
+                    ? 'fa-solid fa-triangle-exclamation text-amber-400'
+                    : 'fa-solid fa-circle-info text-brand-400';
             box.classList.remove('translate-y-20', 'opacity-0');
-            setTimeout(() => {
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(() => {
                 box.classList.add('translate-y-20', 'opacity-0');
-            }, 3500);
+            }, 3200);
         }
 
-        function escapeHtml(str) {
-            return String(str || '')
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;')
-                .replace(/'/g, '&#039;');
+        function updateLiveClock() {
+            const now = new Date();
+            const clockEl = document.getElementById('live-clock');
+            const dateLabelEl = document.getElementById('live-date-label');
+            if (clockEl) {
+                clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
+            }
+            if (dateLabelEl) {
+                dateLabelEl.textContent = now.toLocaleDateString('id-ID', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric'
+                });
+            }
         }
 
         // =========================================================================
-        // 10. EVENT LISTENER & BOOTSTRAP SAAT HALAMAN DIMUAT
+        // 10. INISIALISASI HALAMAN, KEYBOARD, TOUCH SWIPE & INTERVAL 1 MENIT
         // =========================================================================
         window.addEventListener('DOMContentLoaded', () => {
-            const todayISO = getTodayISO();
-            appState.selectedDate = todayISO;
+            const today = getTodayISO();
+            appState.selectedDate = today;
 
             const dateInput = document.getElementById('date-filter');
-            dateInput.value = todayISO;
-            dateInput.addEventListener('change', (e) => {
-                appState.selectedDate = e.target.value || todayISO;
-                applyDateFilterAndRender();
-                showToast(`Menampilkan absensi tanggal ${appState.selectedDate}`, 'info');
-            });
+            if (dateInput) {
+                dateInput.value = today;
+                dateInput.addEventListener('change', (e) => {
+                    appState.selectedDate = e.target.value || getTodayISO();
+                    filterDataBySelectedDate();
+                    renderRoomsSlide();
+                    renderActiveRoomSlides();
+                });
+            }
 
             updateLiveClock();
             setInterval(updateLiveClock, 1000);
 
-            initTouchSwipe();
-            goToSlide(0);
+            // Muat data awal & sinkronisasi otomatis setiap 1 menit (60.000 ms)
             fetchSpreadsheetData(false);
-
-            // Auto-refresh setiap 1 menit (60 detik) untuk memantau kehadiran real-time
             setInterval(() => {
                 fetchSpreadsheetData(false);
             }, 60000);
+
+            // Navigasi Keyboard Panah Kiri / Kanan
+            document.addEventListener('keydown', (e) => {
+                if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+                if (e.key === 'ArrowRight') nextSlide();
+                if (e.key === 'ArrowLeft') prevSlide();
+            });
+
+            // Navigasi Touch Swipe untuk layar sentuh / mobile
+            const viewport = document.getElementById('slider-viewport');
+            let touchStartX = 0;
+            let touchStartY = 0;
+            if (viewport) {
+                viewport.addEventListener('touchstart', (e) => {
+                    touchStartX = e.changedTouches[0].screenX;
+                    touchStartY = e.changedTouches[0].screenY;
+                }, { passive: true });
+
+                viewport.addEventListener('touchend', (e) => {
+                    const dx = e.changedTouches[0].screenX - touchStartX;
+                    const dy = e.changedTouches[0].screenY - touchStartY;
+                    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+                        if (dx < 0) nextSlide();
+                        else prevSlide();
+                    }
+                }, { passive: true });
+            }
         });
     </script>
 </body>
