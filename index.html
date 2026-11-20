@@ -65,12 +65,153 @@
             flex-shrink: 0;
         }
 
+        /* Animasi Titik Hijau Berkedip (Live Pulse & Radar Ping) */
         @keyframes pulseGlow {
             0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.6; transform: scale(1.15); }
+            50% { opacity: 0.45; transform: scale(1.25); }
+        }
+        @keyframes radarPing {
+            0% { transform: scale(0.9); opacity: 0.9; }
+            75%, 100% { transform: scale(2.55); opacity: 0; }
         }
         .live-dot {
-            animation: pulseGlow 2s infinite ease-in-out;
+            animation: pulseGlow 1.6s infinite ease-in-out;
+        }
+        .green-blink-indicator {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 0.6rem;
+            height: 0.6rem;
+            shrink: 0;
+        }
+        .green-blink-indicator::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 9999px;
+            background-color: #10b981;
+            animation: radarPing 1.45s cubic-bezier(0, 0, 0.2, 1) infinite;
+        }
+        .green-blink-indicator::after {
+            content: '';
+            position: relative;
+            width: 0.45rem;
+            height: 0.45rem;
+            border-radius: 9999px;
+            background-color: #10b981;
+            box-shadow: 0 0 8px rgba(16, 185, 129, 0.85);
+            animation: pulseGlow 1.45s infinite ease-in-out;
+        }
+
+        /* Animasi 3D Flip & Expand Dua Arah (Membuka Kartu & Kembali ke Kartu Asal) */
+        .rooms-perspective {
+            perspective: 1600px;
+        }
+        .room-card-3d {
+            transform-style: preserve-3d;
+            backface-visibility: hidden;
+            transition: transform 0.45s cubic-bezier(0.22, 1, 0.36, 1), box-shadow 0.35s ease, border-color 0.3s ease;
+        }
+        .room-card-3d:hover {
+            transform: translateY(-6px) rotateY(4deg) scale(1.015);
+        }
+
+        /* Clone Kartu 3D Melayang untuk Transisi Buka & Tutup */
+        .flip-portal-scene {
+            position: fixed;
+            inset: 0;
+            z-index: 9999;
+            perspective: 1400px;
+            pointer-events: none;
+            overflow: hidden;
+            background: transparent;
+        }
+        .flip-portal-card {
+            position: fixed;
+            transform-style: preserve-3d;
+            -webkit-transform-style: preserve-3d;
+            transform-origin: center center;
+            border-radius: 1.5rem;
+            box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.35);
+            will-change: transform, left, top, width, height, border-radius;
+        }
+        .flip-portal-face {
+            position: absolute;
+            inset: 0;
+            backface-visibility: hidden;
+            -webkit-backface-visibility: hidden;
+            border-radius: inherit;
+            overflow: hidden;
+        }
+        .flip-portal-front {
+            transform: rotateY(0deg);
+        }
+        .flip-portal-back {
+            transform: rotateY(180deg);
+            background: #f8fafc;
+            border: 1px solid #cbd5e1;
+        }
+        .flip-portal-back-scaled {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform-origin: top left;
+            background: #f8fafc;
+            pointer-events: none;
+        }
+        .flip-portal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.25);
+            backdrop-filter: blur(4px);
+            opacity: 0;
+            transition: opacity 0.45s ease;
+        }
+        @keyframes cardHighlightPulse {
+            0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+            70% { box-shadow: 0 0 0 12px rgba(37, 99, 235, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+        }
+        .room-card-return-focus {
+            animation: cardHighlightPulse 1.1s ease-out;
+            border-color: #3b82f6 !important;
+        }
+
+        /* Gaya & Animasi Latar Belakang untuk Kartu Ruangan yang Sedang Aktif */
+        @keyframes activeAuroraFlow {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+        @keyframes activeShimmerSweep {
+            0% { transform: translateX(-140%) skewX(-18deg); }
+            100% { transform: translateX(240%) skewX(-18deg); }
+        }
+        .room-card-active {
+            position: relative;
+            overflow: hidden;
+            background: linear-gradient(135deg, #ecfdf5 0%, #eff6ff 48%, #e0f2fe 100%);
+            background-size: 220% 220%;
+            animation: activeAuroraFlow 7s ease-in-out infinite;
+            border-color: #34d399 !important;
+            box-shadow: 0 10px 26px -8px rgba(16, 185, 129, 0.24), 0 4px 12px -4px rgba(37, 99, 235, 0.14);
+        }
+        .room-card-active::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 45%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.65), transparent);
+            animation: activeShimmerSweep 4.2s infinite ease-in-out;
+            pointer-events: none;
+        }
+        .room-card-active > * {
+            position: relative;
+            z-index: 1;
         }
     </style>
 </head>
@@ -89,8 +230,8 @@
                     <div>
                         <div class="flex items-center gap-2">
                             <h1 class="text-lg sm:text-xl font-bold tracking-tight text-slate-900">E-Presensi Live PKM Kalibunder</h1>
-                            <span id="connection-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200">
-                                <span class="w-2 h-2 rounded-full bg-amber-500 live-dot"></span>
+                            <span id="connection-badge" class="inline-flex items-center gap-2 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                <span class="green-blink-indicator"></span>
                                 <span id="connection-text">Memuat...</span>
                             </span>
                         </div>
@@ -113,7 +254,7 @@
                     </div>
 
                     <!-- Refresh Data Button -->
-                    <button id="btn-refresh" onclick="fetchSpreadsheetData(true)" title="Sinkronisasi Ulang Data Absensi 1.4" class="p-2.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold">
+                    <button id="btn-refresh" onclick="fetchSpreadsheetData(true)" title="Sinkronisasi ulang Absensi 1.4" class="p-2.5 rounded-xl bg-brand-50 hover:bg-brand-100 text-brand-700 border border-brand-200 transition active:scale-95 flex items-center gap-1.5 text-xs font-semibold">
                         <i id="refresh-icon" class="fa-solid fa-arrows-rotate"></i>
                         <span class="hidden lg:inline">Sinkron</span>
                     </button>
@@ -201,11 +342,14 @@
                         </div>
 
                         <div class="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-sm flex items-center gap-3.5">
-                            <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0">
+                            <div class="w-11 h-11 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center text-lg shrink-0 relative">
                                 <i class="fa-solid fa-user-check"></i>
+                                <span class="absolute -top-1 -right-1 green-blink-indicator"></span>
                             </div>
                             <div>
-                                <p class="text-xs font-medium text-slate-500">Sedang Hadir (Bertugas)</p>
+                                <p class="text-xs font-medium text-slate-500 flex items-center gap-1.5">
+                                    <span>Sedang Hadir (Bertugas)</span>
+                                </p>
                                 <p id="stat-total-hadir" class="text-xl sm:text-2xl font-extrabold text-emerald-600">0</p>
                             </div>
                         </div>
@@ -244,7 +388,7 @@
                     </div>
 
                     <!-- Rooms Grid Container -->
-                    <div id="rooms-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                    <div id="rooms-grid" class="rooms-perspective grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                         <!-- Rendered dynamically via JS -->
                     </div>
                 </div>
@@ -253,7 +397,7 @@
             <!-- ===================================================================== -->
             <!-- SLIDE 2: KARTU PETUGAS HADIR LENGKAP DENGAN FOTO DATANG               -->
             <!-- ===================================================================== -->
-            <section class="slide-panel px-4 sm:px-6 lg:px-8 py-6">
+            <section id="slide-panel-1" class="slide-panel px-4 sm:px-6 lg:px-8 py-6">
                 <div class="max-w-7xl mx-auto">
                     
                     <!-- Slide Header -->
@@ -687,38 +831,24 @@
                     'Foto Pulang': ''
                 },
                 {
-                    'ID': 'ABS-003', 'Tanggal': todayISO, 'NIP': '199008152018011002', 'Nama': 'Budi Santoso, S.Farm., Apt',
-                    'Shift': '1', 'Waktu Masuk': '07:48:30', 'Waktu Pulang': '14:35:10', 'Status': 'Pulang',
-                    'Lokasi Masuk': 'Instalasi Farmasi Pusat', 'Ket Luar': '', 'Terlambat (Mnt)': '3', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80'
-                },
-                {
-                    'ID': 'ABS-004', 'Tanggal': todayISO, 'NIP': '199502202020121005', 'Nama': 'Rizky Pratama, S.Kom',
-                    'Shift': 'NS', 'Waktu Masuk': '07:55:00', 'Waktu Pulang': '', 'Status': 'Hadir',
-                    'Lokasi Masuk': 'Ruang IT & SIMRS', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-005', 'Tanggal': todayISO, 'NIP': '198911052014022003', 'Nama': 'Dewi Lestari, A.Md.AK',
-                    'Shift': '1', 'Waktu Masuk': '07:29:40', 'Waktu Pulang': '', 'Status': 'Hadir',
-                    'Lokasi Masuk': 'Laboratorium Patologi Klinik', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-006', 'Tanggal': todayISO, 'NIP': '198706182011011004', 'Nama': 'Hendra Wijaya, S.KM',
-                    'Shift': 'DL', 'Waktu Masuk': '08:02:15', 'Waktu Pulang': '', 'Status': 'Dinas Luar',
-                    'Lokasi Masuk': '-', 'Ket Luar': 'Rapat Koordinasi Dinas Kesehatan Provinsi', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=400&q=80',
-                    'Foto Pulang': ''
-                },
-                {
-                    'ID': 'ABS-007', 'Tanggal': yesterdayISO, 'NIP': '199309102019032009', 'Nama': 'Ns. Kartika Putri, S.Kep',
-                    'Shift': '4', 'Waktu Masuk': '20:25:18', 'Waktu Pulang': '', 'Status': 'Hadir',
+                    'ID': 'ABS-003', 'Tanggal': yesterdayISO, 'NIP': '199008172018011002', 'Nama': 'Budi Santoso, A.Md.Kep',
+                    'Shift': '4', 'Waktu Masuk': '20:25:00', 'Waktu Pulang': '', 'Status': 'Hadir',
                     'Lokasi Masuk': 'IGD & Triase Utama', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
-                    'Foto Datang': 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=400&q=80',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': ''
+                },
+                {
+                    'ID': 'ABS-004', 'Tanggal': todayISO, 'NIP': '199502202020122008', 'Nama': 'apt. Dewi Lestari, S.Farm',
+                    'Shift': '1', 'Waktu Masuk': '07:15:30', 'Waktu Pulang': '14:35:10', 'Status': 'Pulang',
+                    'Lokasi Masuk': 'Instalasi Farmasi', 'Ket Luar': '', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Ya',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80',
+                    'Foto Pulang': 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=400&q=80'
+                },
+                {
+                    'ID': 'ABS-005', 'Tanggal': todayISO, 'NIP': '198711052014021003', 'Nama': 'Hendra Wijaya, SKM',
+                    'Shift': 'DL', 'Waktu Masuk': '08:00:00', 'Waktu Pulang': '', 'Status': 'Dinas Luar',
+                    'Lokasi Masuk': '-', 'Ket Luar': 'Rapat Koordinasi Dinas Kesehatan', 'Terlambat (Mnt)': '0', 'Pulang Cepat (Mnt)': '0', 'Apel': 'Tidak',
+                    'Foto Datang': 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=400&q=80',
                     'Foto Pulang': ''
                 }
             ];
@@ -726,84 +856,106 @@
             const demoSettings = [
                 {
                     'Kunci': 'RUANGAN',
-                    'Nilai': 'IGD & Triase Utama, Poliklinik Penyakit Dalam, Instalasi Farmasi Pusat, Ruang IT & SIMRS, Laboratorium Patologi Klinik, Ruang Rawat Inap Teratai, Instalasi Gizi & Dapur, Poliklinik Anak & Tumbuh Kembang, Ruang Radiologi'
+                    'Nilai': 'IGD & Triase Utama, Instalasi Farmasi, Poliklinik Penyakit Dalam, Poliklinik Umum, Ruang KIA & KB, Laboratorium'
                 }
             ];
 
-            return { absensi: demoAbsensi, shifts: demoShifts, settings: demoSettings };
+            return {
+                absensi: demoAbsensi,
+                shifts: demoShifts,
+                settings: demoSettings
+            };
         }
 
         // =========================================================================
-        // 4. PENGAMBILAN & PARSING DATA GOOGLE SPREADSHEET (GVIZ / GAS / FALLBACK)
+        // 4. PENGAMBILAN DATA GOOGLE SPREADSHEET (GVIZ JSONP & APPS SCRIPT)
         // =========================================================================
-        async function fetchSheetGviz(sheetName) {
-            const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
-            const response = await fetch(url);
-            if (!response.ok) throw new Error(`HTTP ${response.status}`);
-            const text = await response.text();
-            const match = text.match(/google\.visualization\.Query\.setResponse\(([\s\S]*?)\);/);
-            if (!match || !match[1]) throw new Error('Format GViz tidak valid');
-            const json = JSON.parse(match[1]);
-            if (json.status === 'error') throw new Error(json.errors?.[0]?.message || 'GViz Error');
+        function fetchSheetGviz(sheetName) {
+            return new Promise((resolve, reject) => {
+                const cbName = `gvizCb_${sheetName.replace(/\W/g, '')}_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+                const script = document.createElement('script');
+                const timeout = setTimeout(() => {
+                    cleanup();
+                    reject(new Error(`Timeout memuat sheet ${sheetName}`));
+                }, 8000);
 
-            const cols = json.table.cols.map(c => (c.label || '').trim());
-            const rows = (json.table.rows || []).map(r => {
-                const obj = {};
-                (r.c || []).forEach((cell, idx) => {
-                    const header = cols[idx] || `COL_${idx}`;
-                    obj[header] = cell ? (cell.f !== undefined && cell.f !== null ? String(cell.f) : (cell.v !== null ? String(cell.v) : '')) : '';
-                });
-                return obj;
+                function cleanup() {
+                    clearTimeout(timeout);
+                    delete window[cbName];
+                    if (script.parentNode) script.parentNode.removeChild(script);
+                }
+
+                window[cbName] = function (response) {
+                    cleanup();
+                    if (!response || response.status === 'error' || !response.table) {
+                        reject(new Error(`Sheet ${sheetName} tidak dapat diakses publik`));
+                        return;
+                    }
+                    const cols = (response.table.cols || []).map(c => (c.label || c.id || '').trim());
+                    const rows = (response.table.rows || []).map(r => {
+                        const obj = {};
+                        (r.c || []).forEach((cell, idx) => {
+                            const header = cols[idx] || `COL_${idx}`;
+                            obj[header] = cell ? (cell.f !== undefined && cell.f !== null ? cell.f : (cell.v !== null ? cell.v : '')) : '';
+                        });
+                        return obj;
+                    });
+                    resolve(rows);
+                };
+
+                const encodedSheet = encodeURIComponent(sheetName);
+                script.src = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=responseHandler:${cbName}&sheet=${encodedSheet}`;
+                script.onerror = () => {
+                    cleanup();
+                    reject(new Error(`Gagal memuat script gviz untuk ${sheetName}`));
+                };
+                document.body.appendChild(script);
             });
-            return rows;
         }
 
         async function fetchSpreadsheetData(showNotification = false) {
             const refreshIcon = document.getElementById('refresh-icon');
-            refreshIcon.classList.add('fa-spin');
+            if (refreshIcon) refreshIcon.classList.add('fa-spin');
 
             try {
-                let absensiRows = [];
-                let shiftsRows = [];
-                let settingsRows = [];
-
-                // Prioritas 1: Jika pengguna memasukkan URL Google Apps Script Web App
                 if (appState.gasWebAppUrl) {
                     const res = await fetch(appState.gasWebAppUrl);
                     const json = await res.json();
-                    absensiRows = json.absensi || [];
-                    shiftsRows = json.shifts || [];
-                    settingsRows = json.settings || [];
-                    appState.dataMode = 'GAS';
-                } else {
-                    // Prioritas 2: Direct Google Visualization API (Memerlukan spreadsheet Public / Published to web)
-                    const [absData, shiftData, settingsData] = await Promise.all([
-                        fetchSheetGviz(SHEET_ABSENSI),
-                        fetchSheetGviz(SHEET_SHIFTS),
-                        fetchSheetGviz(SHEET_SETTINGS).catch(() => [])
-                    ]);
-                    absensiRows = absData;
-                    shiftsRows = shiftData;
-                    settingsRows = settingsData;
-                    appState.dataMode = 'LIVE';
+                    if (json && Array.isArray(json.absensi)) {
+                        appState.dataMode = 'GAS';
+                        processAndRenderData(json.absensi, json.shifts || [], json.settings || []);
+                        updateConnectionBadge();
+                        if (showNotification) showToast('Data berhasil disinkronkan dari Absensi 1.4', 'success');
+                        return;
+                    }
                 }
 
+                const [absensiRows, shiftsRows, settingsRows] = await Promise.all([
+                    fetchSheetGviz(SHEET_ABSENSI),
+                    fetchSheetGviz(SHEET_SHIFTS).catch(() => []),
+                    fetchSheetGviz(SHEET_SETTINGS).catch(() => [])
+                ]);
+
+                appState.dataMode = 'LIVE';
                 processAndRenderData(absensiRows, shiftsRows, settingsRows);
                 updateConnectionBadge();
                 if (showNotification) showToast('Data berhasil disinkronkan dari Absensi 1.4', 'success');
-
             } catch (err) {
-                console.warn('Gagal mengambil live spreadsheet (kemungkinan private/CORS), beralih ke mode Demo:', err);
-                const demo = getDemoData(appState.selectedDate || getTodayISO());
+                const demo = getDemoData(appState.selectedDate);
                 appState.dataMode = 'DEMO';
                 processAndRenderData(demo.absensi, demo.shifts, demo.settings);
                 updateConnectionBadge();
-                if (showNotification) showToast('Spreadsheet belum publik. Menampilkan Data Simulasi Demo.', 'warning');
+                if (showNotification) {
+                    showToast('Spreadsheet belum publik, menampilkan data simulasi.', 'warning');
+                }
             } finally {
-                refreshIcon.classList.remove('fa-spin');
+                if (refreshIcon) refreshIcon.classList.remove('fa-spin');
             }
         }
 
+        // =========================================================================
+        // 5. PENGOLAHAN DATA ABSENSI, SHIFTS & SETTINGS
+        // =========================================================================
         function isEmployeePulang(row) {
             const waktuPulang = String(row['Waktu Pulang'] || '').trim();
             const status = String(row['Status'] || '').trim().toLowerCase();
@@ -1067,14 +1219,15 @@
             // Kartu Khusus: "Semua Ruangan"
             if ('semua ruangan'.includes(searchQuery) || searchQuery === '') {
                 cardsHtml += `
-                    <div onclick="selectRoomAndSlide('ALL')" class="group cursor-pointer bg-gradient-to-br from-slate-900 via-slate-800 to-brand-950 text-white rounded-3xl p-5 shadow-md hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between border border-slate-700">
+                    <div data-room-key="ALL" onclick="selectRoomAndSlide('ALL', this)" class="room-card-3d group cursor-pointer bg-gradient-to-br from-slate-900 via-slate-800 to-brand-950 text-white rounded-3xl p-5 shadow-md hover:shadow-xl flex flex-col justify-between border border-slate-700">
                         <div>
                             <div class="flex items-start justify-between gap-2 mb-4">
                                 <div class="w-12 h-12 rounded-2xl bg-white/10 text-brand-300 flex items-center justify-center text-xl group-hover:scale-110 transition">
                                     <i class="fa-solid fa-layer-group"></i>
                                 </div>
-                                <span class="px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-500/30 text-brand-200 border border-brand-400/30">
-                                    Semua Lokasi
+                                <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-brand-500/30 text-brand-200 border border-brand-400/30">
+                                    <span class="green-blink-indicator"></span>
+                                    <span>Semua Lokasi</span>
                                 </span>
                             </div>
                             <h3 class="text-lg font-bold tracking-tight group-hover:text-brand-300 transition">Semua Ruangan</h3>
@@ -1113,16 +1266,23 @@
 
                     const isDinasLuarRoom = room.isDinasLuar || room.name.toLowerCase().includes('dinas luar');
                     const hasActiveDuty = room.hadirCount > 0;
+                    const isActiveCard = hasActiveDuty && !isDinasLuarRoom;
+                    const activeCardClass = isActiveCard
+                        ? 'room-card-active hover:shadow-xl hover:border-emerald-400'
+                        : 'bg-white border-slate-200/90 shadow-sm hover:shadow-xl hover:border-brand-300';
+                    const activeIconClass = isActiveCard
+                        ? 'bg-gradient-to-br from-emerald-500 to-teal-600 text-white shadow-md shadow-emerald-500/25'
+                        : 'bg-slate-100 text-slate-500 group-hover:bg-brand-600 group-hover:text-white';
 
-                    // Keterangan status bertugas per kartu ruangan
+                    // Keterangan status bertugas per kartu ruangan dengan titik hijau berkedip saat bertugas
                     const dutyStatusBadgeHtml = isDinasLuarRoom
                         ? `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-50 border border-amber-200/80 text-amber-800 text-[11px] font-semibold">
                                <i class="fa-solid fa-briefcase text-[10px]"></i>
                                <span>Petugas di Luar Kantor</span>
                            </div>`
                         : hasActiveDuty
-                            ? `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-[11px] font-bold">
-                                   <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                            ? `<div class="mt-2.5 inline-flex items-center gap-2 px-2.5 py-1 rounded-lg bg-white/85 backdrop-blur-xs border border-emerald-300/80 text-emerald-800 text-[11px] font-bold shadow-2xs">
+                                   <span class="green-blink-indicator"></span>
                                    <span>Sedang Bertugas (${room.hadirCount} Hadir)</span>
                                </div>`
                             : `<div class="mt-2.5 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 border border-slate-200 text-slate-600 text-[11px] font-semibold">
@@ -1135,37 +1295,37 @@
                                <span class="text-[11px] font-semibold text-amber-800 block">Dinas Luar</span>
                            </div>`
                         : `<div class="flex items-center gap-3">
-                               <div class="px-2.5 py-1 rounded-xl bg-emerald-50 border border-emerald-100">
+                               <div class="px-2.5 py-1 rounded-xl ${isActiveCard ? 'bg-white/85 border-emerald-200' : 'bg-emerald-50 border-emerald-100'} border">
                                    <span class="text-[10px] font-semibold text-emerald-700 block">Hadir</span>
                                    <span class="text-sm font-extrabold text-emerald-700">${room.hadirCount}</span>
                                </div>
-                               <div class="px-2.5 py-1 rounded-xl bg-rose-50 border border-rose-100">
+                               <div class="px-2.5 py-1 rounded-xl ${isActiveCard ? 'bg-white/85 border-rose-200' : 'bg-rose-50 border-rose-100'} border">
                                    <span class="text-[10px] font-semibold text-rose-700 block">Pulang</span>
                                    <span class="text-sm font-extrabold text-rose-700">${room.pulangCount}</span>
                                </div>
                            </div>`;
 
                     cardsHtml += `
-                        <div onclick="selectRoomAndSlide('${escapeHtml(room.name)}')" class="group cursor-pointer bg-white rounded-3xl p-5 border border-slate-200/90 shadow-sm hover:shadow-xl hover:border-brand-300 hover:-translate-y-1 transition-all duration-300 flex flex-col justify-between">
+                        <div data-room-key="${escapeHtml(room.name)}" onclick="selectRoomAndSlide('${escapeHtml(room.name)}', this)" class="room-card-3d group cursor-pointer rounded-3xl p-5 border ${activeCardClass} flex flex-col justify-between">
                             <div>
                                 <div class="flex items-start justify-between gap-2 mb-3.5">
-                                    <div class="w-11 h-11 rounded-2xl ${hasActiveDuty ? 'bg-brand-50 text-brand-600' : 'bg-slate-100 text-slate-500'} group-hover:bg-brand-600 group-hover:text-white flex items-center justify-center text-lg transition-colors">
+                                    <div class="w-11 h-11 rounded-2xl ${activeIconClass} flex items-center justify-center text-lg transition-colors">
                                         <i class="fa-solid fa-hospital-user"></i>
                                     </div>
                                     <div class="flex -space-x-2 overflow-hidden">
                                         ${avatarStack}
                                     </div>
                                 </div>
-                                <h3 class="text-base sm:text-lg font-bold text-slate-900 group-hover:text-brand-700 transition line-clamp-2">${room.name}</h3>
-                                <p class="text-xs text-slate-500 mt-1">
-                                    Total Tercatat: <span class="font-semibold text-slate-700">${room.totalCount} Petugas</span>
+                                <h3 class="text-base sm:text-lg font-bold text-slate-900 ${isActiveCard ? 'group-hover:text-emerald-800' : 'group-hover:text-brand-700'} transition line-clamp-2">${room.name}</h3>
+                                <p class="text-xs ${isActiveCard ? 'text-slate-600' : 'text-slate-500'} mt-1">
+                                    Total Tercatat: <span class="font-semibold text-slate-800">${room.totalCount} Petugas</span>
                                 </p>
                                 ${dutyStatusBadgeHtml}
                             </div>
 
-                            <div class="mt-4 pt-3.5 border-t border-slate-100 flex items-center justify-between">
+                            <div class="mt-4 pt-3.5 border-t ${isActiveCard ? 'border-emerald-200/70' : 'border-slate-100'} flex items-center justify-between">
                                 ${statusCountersHtml}
-                                <span class="w-9 h-9 rounded-full bg-slate-100 group-hover:bg-brand-600 text-slate-600 group-hover:text-white flex items-center justify-center transition">
+                                <span class="w-9 h-9 rounded-full ${isActiveCard ? 'bg-emerald-600 text-white shadow-sm group-hover:bg-emerald-700' : 'bg-slate-100 group-hover:bg-brand-600 text-slate-600 group-hover:text-white'} flex items-center justify-center transition">
                                     <i class="fa-solid fa-chevron-right text-xs"></i>
                                 </span>
                             </div>
@@ -1243,8 +1403,9 @@
                         <div class="bg-white rounded-3xl border border-slate-200/90 shadow-sm hover:shadow-lg transition overflow-hidden flex flex-col">
                             <div onclick="openPhotoModal('${fotoSrc}', '${nama}', '${roomName} • ${shiftLabel}', 'Waktu Masuk: ${waktuMasuk}', 'Foto Absen Datang', 'emerald')" class="relative aspect-[4/3] bg-slate-100 cursor-pointer group overflow-hidden">
                                 <img src="${fotoSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300">
-                                <span class="absolute top-3 left-3 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-600 text-white shadow">
-                                    HADIR
+                                <span class="absolute top-3 left-3 inline-flex items-center gap-2 px-2.5 py-1 rounded-full text-[10px] font-bold bg-emerald-600/95 backdrop-blur-sm text-white shadow">
+                                    <span class="w-2 h-2 rounded-full bg-emerald-300 animate-ping"></span>
+                                    <span>HADIR</span>
                                 </span>
                                 <span class="absolute bottom-3 right-3 px-2.5 py-1 rounded-xl text-xs font-mono font-bold bg-slate-900/80 text-white backdrop-blur-sm">
                                     <i class="fa-regular fa-clock mr-1 text-emerald-400"></i>${waktuMasuk}
@@ -1296,7 +1457,13 @@
                             <td class="py-3.5 px-4 font-mono text-xs text-slate-500">${idx + 1}</td>
                             <td class="py-3.5 px-4">
                                 <div class="flex items-center gap-3">
-                                    <img src="${fotoSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" onclick="openPhotoModal('${fotoSrc}', '${nama}', '${roomName}', 'Waktu Masuk: ${waktuMasuk}', 'Foto Absen Datang', 'emerald')" class="w-9 h-9 rounded-full object-cover ring-2 ring-slate-100 cursor-pointer shrink-0">
+                                    <div class="relative shrink-0">
+                                        <img src="${fotoSrc}" onerror="this.onerror=null;this.src='${fallback}'" alt="${nama}" onclick="openPhotoModal('${fotoSrc}', '${nama}', '${roomName}', 'Waktu Masuk: ${waktuMasuk}', 'Foto Absen Datang', 'emerald')" class="w-9 h-9 rounded-full object-cover ring-2 ring-emerald-200 cursor-pointer">
+                                        <span class="absolute -bottom-0.5 -right-0.5 flex h-3 w-3" title="Sedang Hadir">
+                                            <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                            <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500 ring-2 ring-white"></span>
+                                        </span>
+                                    </div>
                                     <div>
                                         <span class="font-bold text-slate-900">${nama}</span>
                                         ${yesterdayTag}
@@ -1309,8 +1476,9 @@
                                 <span class="text-xs text-slate-600">${shiftKet}</span>
                             </td>
                             <td class="py-3.5 px-4">
-                                <span class="font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70">
-                                    ${waktuMasuk}
+                                <span class="inline-flex items-center gap-1.5 font-mono text-xs font-bold px-2.5 py-1 rounded-lg bg-emerald-50 text-emerald-700 border border-emerald-200/70">
+                                    <span class="green-blink-indicator"></span>
+                                    <span>${waktuMasuk}</span>
                                 </span>
                             </td>
                         </tr>
@@ -1359,42 +1527,293 @@
         }
 
         // =========================================================================
-        // 8. NAVIGASI SLIDER (KLIK, KEYBOARD ARROW, TOUCH SWIPE) & AUTO-SYNC
+        // 8. NAVIGASI SLIDER (3D CARD FLIP EXPAND / COLLAPSE, ARROW, SWIPE)
         // =========================================================================
-        function selectRoomAndSlide(roomName) {
-            appState.selectedRoom = roomName;
-            renderActiveRoomSlides();
-            goToSlide(1);
-            fetchSpreadsheetData(false);
+        let isFlipAnimating = false;
+        let lastOpenedRoomKey = 'ALL';
+        let lastRoomsScrollY = 0;
+
+        function findRoomCardElement(roomKey) {
+            const cards = document.querySelectorAll('#rooms-grid [data-room-key]');
+            for (const c of cards) {
+                if ((c.getAttribute('data-room-key') || '').toLowerCase() === String(roomKey || '').toLowerCase()) {
+                    return c;
+                }
+            }
+            return cards[0] || null;
         }
 
-        function goToSlide(index) {
-            const clamped = Math.max(0, Math.min(3, index));
-            appState.currentSlide = clamped;
-            const track = document.getElementById('slides-track');
-            if (track) {
-                track.style.transform = `translateX(-${clamped * 25}%)`;
+        function createBackPreviewElement(targetWidth, targetHeight) {
+            const wrapper = document.createElement('div');
+            wrapper.className = 'flip-portal-back-scaled';
+            wrapper.style.width = `${targetWidth}px`;
+            wrapper.style.minHeight = `${targetHeight}px`;
+
+            const panel1 = document.getElementById('slide-panel-1');
+            if (panel1) {
+                const clonePanel = panel1.cloneNode(true);
+                clonePanel.removeAttribute('id');
+                clonePanel.style.width = `${targetWidth}px`;
+                clonePanel.style.minHeight = `${targetHeight}px`;
+                wrapper.appendChild(clonePanel);
+            }
+            return wrapper;
+        }
+
+        function updatePreviewScale(wrapper, boxWidth, boxHeight, fullWidth, fullHeight) {
+            if (!wrapper) return;
+            const scaleX = boxWidth / fullWidth;
+            const scaleY = boxHeight / fullHeight;
+            wrapper.style.transform = `scale(${scaleX}, ${scaleY})`;
+        }
+
+        function buildSlideBackPreviewHtml(roomKey, fullWidth, fullHeight) {
+            const panel1 = document.getElementById('slide-panel-1');
+            const panelHtml = panel1 ? panel1.innerHTML : '';
+            return `
+                <div class="flip-portal-back-scaled" data-full-width="${fullWidth}" data-full-height="${fullHeight}" style="width: ${fullWidth}px; min-height: ${fullHeight}px; padding: 1.5rem 1.5rem;">
+                    ${panelHtml}
+                </div>
+            `;
+        }
+
+        function syncBackFaceScale(backFace, boxWidth, boxHeight) {
+            if (!backFace) return;
+            const scaledEl = backFace.querySelector('.flip-portal-back-scaled');
+            if (!scaledEl) return;
+            const fullWidth = parseFloat(scaledEl.getAttribute('data-full-width')) || window.innerWidth;
+            const fullHeight = parseFloat(scaledEl.getAttribute('data-full-height')) || window.innerHeight;
+            const scaleX = boxWidth / fullWidth;
+            const scaleY = boxHeight / fullHeight;
+            scaledEl.style.transform = `scale(${scaleX}, ${scaleY})`;
+        }
+
+        function easeInOutCubic(t) {
+            return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+        }
+
+        function easeOutQuart(t) {
+            return 1 - Math.pow(1 - t, 4);
+        }
+
+        function runCardFlipTransition(direction, cardEl, onComplete) {
+            if (isFlipAnimating) return;
+            isFlipAnimating = true;
+
+            const vw = window.innerWidth;
+            const vh = window.innerHeight;
+            const viewportEl = document.getElementById('slider-viewport');
+            const vpRect = viewportEl ? viewportEl.getBoundingClientRect() : { left: 0, top: 0, width: vw, height: vh };
+            const targetTop = Math.max(0, vpRect.top);
+            const targetWidth = vpRect.width || vw;
+            const targetHeight = Math.max(vh - targetTop, vpRect.height || vh);
+            const fullRect = { left: vpRect.left || 0, top: targetTop, width: targetWidth, height: targetHeight };
+
+            const cardRect = cardEl
+                ? cardEl.getBoundingClientRect()
+                : {
+                    left: vw / 2 - 160,
+                    top: vh / 2 - 110,
+                    width: 320,
+                    height: 220
+                };
+
+            const scene = document.createElement('div');
+            scene.className = 'flip-portal-scene';
+
+            const backdrop = document.createElement('div');
+            backdrop.className = 'flip-portal-backdrop';
+
+            const portalCard = document.createElement('div');
+            portalCard.className = 'flip-portal-card';
+
+            // Sisi Depan = Kartu Ruangan Asal
+            const frontFace = document.createElement('div');
+            frontFace.className = 'flip-portal-face flip-portal-front';
+            if (cardEl) {
+                const clonedCard = cardEl.cloneNode(true);
+                clonedCard.style.width = '100%';
+                clonedCard.style.height = '100%';
+                clonedCard.style.margin = '0';
+                clonedCard.style.transform = 'none';
+                frontFace.appendChild(clonedCard);
             }
 
-            // Otomatis kembalikan posisi scroll ke paling atas saat berpindah slide
-            window.scrollTo({ top: 0, behavior: 'smooth' });
-            document.documentElement.scrollTop = 0;
-            document.body.scrollTop = 0;
+            // Sisi Belakang = Pratinjau penuh Slide 2 (Kartu Foto Hadir) terskala pas area viewport
+            const backFace = document.createElement('div');
+            backFace.className = 'flip-portal-face flip-portal-back';
+            const previewWrapper = createBackPreviewElement(targetWidth, targetHeight);
+            backFace.appendChild(previewWrapper);
 
-            const btnBack = document.getElementById('btn-back-rooms');
-            if (btnBack) {
-                if (clamped === 0) {
-                    btnBack.classList.add('hidden');
-                    btnBack.classList.remove('inline-flex');
+            portalCard.appendChild(frontFace);
+            portalCard.appendChild(backFace);
+            scene.appendChild(backdrop);
+            scene.appendChild(portalCard);
+            document.body.appendChild(scene);
+
+            const flipDuration = 540;
+            const zoomDuration = 640;
+            const pauseBetween = 120;
+
+            if (direction === 'open') {
+                lastRoomsScrollY = window.scrollY || document.documentElement.scrollTop || 0;
+
+                if (cardEl) cardEl.style.opacity = '0';
+                updatePreviewScale(previewWrapper, cardRect.width, cardRect.height, targetWidth, targetHeight);
+
+                portalCard.style.left = `${cardRect.left}px`;
+                portalCard.style.top = `${cardRect.top}px`;
+                portalCard.style.width = `${cardRect.width}px`;
+                portalCard.style.height = `${cardRect.height}px`;
+                portalCard.style.borderRadius = '1.5rem';
+                portalCard.style.transform = 'rotateY(0deg)';
+                portalCard.style.transition = `transform ${flipDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+
+                // Tahap 1: Balik kartu 180° di ukuran kartu aslinya
+                requestAnimationFrame(() => {
+                    backdrop.style.opacity = '1';
+                    portalCard.style.transform = 'rotateY(180deg) scale(1.02)';
+
+                    // Tahap 2: Zoom-in langsung menyesuaikan area konten (#slider-viewport)
+                    setTimeout(() => {
+                        portalCard.style.transition = [
+                            `left ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `top ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `width ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `height ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `border-radius ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `transform ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`
+                        ].join(', ');
+                        previewWrapper.style.transition = `transform ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+
+                        portalCard.style.left = `${fullRect.left}px`;
+                        portalCard.style.top = `${fullRect.top}px`;
+                        portalCard.style.width = `${fullRect.width}px`;
+                        portalCard.style.height = `${fullRect.height}px`;
+                        portalCard.style.borderRadius = '0px';
+                        portalCard.style.transform = 'rotateY(180deg) scale(1)';
+                        updatePreviewScale(previewWrapper, fullRect.width, fullRect.height, targetWidth, targetHeight);
+                    }, flipDuration + pauseBetween);
+                });
+
+                setTimeout(() => {
+                    // Aktifkan slide dan bilah navigasi secara presisi sebelum overlay dilepas
+                    onComplete();
+                    if (cardEl) cardEl.style.opacity = '1';
+                    requestAnimationFrame(() => {
+                        backdrop.style.transition = 'opacity 140ms ease';
+                        backdrop.style.opacity = '0';
+                        setTimeout(() => {
+                            scene.remove();
+                            isFlipAnimating = false;
+                        }, 145);
+                    });
+                }, flipDuration + pauseBetween + zoomDuration + 30);
+            } else {
+                // Tahap 0: Kunci tampilan pada area konten terlebih dahulu sebelum memulihkan slide ruangan
+                updatePreviewScale(previewWrapper, fullRect.width, fullRect.height, targetWidth, targetHeight);
+                portalCard.style.transition = 'none';
+                portalCard.style.left = `${fullRect.left}px`;
+                portalCard.style.top = `${fullRect.top}px`;
+                portalCard.style.width = `${fullRect.width}px`;
+                portalCard.style.height = `${fullRect.height}px`;
+                portalCard.style.borderRadius = '0px';
+                portalCard.style.transform = 'rotateY(180deg) scale(1)';
+                backdrop.style.transition = 'none';
+                backdrop.style.opacity = '1';
+
+                void portalCard.offsetWidth;
+
+                // Pulihkan track slide ruangan & posisi scroll terakhir di balik layar
+                onComplete();
+                window.scrollTo({ top: lastRoomsScrollY, behavior: 'instant' });
+
+                let destCard = findRoomCardElement(lastOpenedRoomKey);
+                if (destCard) {
+                    const preRect = destCard.getBoundingClientRect();
+                    if (preRect.top < 80 || preRect.bottom > vh - 20) {
+                        destCard.scrollIntoView({ behavior: 'instant', block: 'center' });
+                    }
+                }
+
+                const destRect = destCard ? destCard.getBoundingClientRect() : cardRect;
+                if (destCard) destCard.style.opacity = '0';
+
+                requestAnimationFrame(() => {
+                    requestAnimationFrame(() => {
+                        // Tahap 1: Zoom-out perlahan dari area konten kembali ke ukuran kartu tujuan
+                        portalCard.style.transition = [
+                            `left ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `top ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `width ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `height ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `border-radius ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`,
+                            `transform ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`
+                        ].join(', ');
+                        previewWrapper.style.transition = `transform ${zoomDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+
+                        portalCard.style.left = `${destRect.left}px`;
+                        portalCard.style.top = `${destRect.top}px`;
+                        portalCard.style.width = `${destRect.width}px`;
+                        portalCard.style.height = `${destRect.height}px`;
+                        portalCard.style.borderRadius = '1.5rem';
+                        portalCard.style.transform = 'rotateY(180deg) scale(1.02)';
+                        updatePreviewScale(previewWrapper, destRect.width, destRect.height, targetWidth, targetHeight);
+
+                        // Tahap 2: Setelah mengecil pas di posisi kartu asal, putar balik 180° menampilkan kartu ruangan asal
+                        setTimeout(() => {
+                            backdrop.style.transition = `opacity ${flipDuration}ms ease`;
+                            backdrop.style.opacity = '0';
+                            portalCard.style.transition = `transform ${flipDuration}ms cubic-bezier(0.22, 1, 0.36, 1)`;
+                            portalCard.style.transform = 'rotateY(0deg) scale(1)';
+                        }, zoomDuration + 80);
+
+                        setTimeout(() => {
+                            if (destCard) {
+                                destCard.style.opacity = '1';
+                                destCard.classList.add('room-card-return-focus');
+                                setTimeout(() => destCard.classList.remove('room-card-return-focus'), 1150);
+                            }
+                            scene.remove();
+                            isFlipAnimating = false;
+                        }, zoomDuration + 80 + flipDuration + 40);
+                    });
+                });
+            }
+        }
+
+        function setSlideImmediate(slideIndex, instant = false) {
+            const clamped = Math.max(0, Math.min(3, slideIndex));
+            appState.currentSlide = clamped;
+
+            const track = document.getElementById('slides-track');
+            if (track) {
+                if (instant) {
+                    track.style.transition = 'none';
+                    track.style.transform = `translateX(-${clamped * 25}%)`;
+                    void track.offsetWidth;
+                    track.style.transition = '';
                 } else {
-                    btnBack.classList.remove('hidden');
-                    btnBack.classList.add('inline-flex');
+                    track.style.transform = `translateX(-${clamped * 25}%)`;
                 }
             }
 
+            // Update status tombol kembali ke Ruangan
+            const backBtn = document.getElementById('btn-back-rooms');
+            if (backBtn) {
+                if (clamped === 0) {
+                    backBtn.classList.add('hidden');
+                    backBtn.classList.remove('inline-flex');
+                } else {
+                    backBtn.classList.remove('hidden');
+                    backBtn.classList.add('inline-flex');
+                }
+            }
+
+            // Update tampilan aktif pada tab slide
             document.querySelectorAll('.slide-tab').forEach(tab => {
-                const tabIdx = parseInt(tab.getAttribute('data-slide-tab'), 10);
-                if (tabIdx === clamped) {
+                const idx = parseInt(tab.getAttribute('data-slide-tab'), 10);
+                if (idx === clamped) {
                     tab.classList.remove('bg-slate-100', 'text-slate-600', 'hover:bg-slate-200');
                     tab.classList.add('bg-brand-600', 'text-white', 'shadow-sm');
                 } else {
@@ -1403,39 +1822,84 @@
                 }
             });
 
-            const btnPrev = document.getElementById('btn-prev-slide');
-            const btnNext = document.getElementById('btn-next-slide');
-            if (btnPrev) btnPrev.disabled = clamped === 0;
-            if (btnNext) btnNext.disabled = clamped === 3;
+            // Update status tombol prev / next
+            const prevBtn = document.getElementById('btn-prev-slide');
+            const nextBtn = document.getElementById('btn-next-slide');
+            if (prevBtn) prevBtn.disabled = clamped === 0;
+            if (nextBtn) nextBtn.disabled = clamped === 3;
         }
 
-        function prevSlide() {
-            goToSlide(appState.currentSlide - 1);
+        function goToSlide(slideIndex) {
+            const clamped = Math.max(0, Math.min(3, slideIndex));
+            if (isFlipAnimating) return;
+
+            // Jika kembali dari slide detail (1-3) ke daftar ruangan (0), gunakan animasi flip-back
+            if (clamped === 0 && appState.currentSlide > 0) {
+                const targetCard = findRoomCardElement(lastOpenedRoomKey);
+                runCardFlipTransition('close', targetCard, () => {
+                    setSlideImmediate(0, true);
+                });
+                return;
+            }
+
+            setSlideImmediate(clamped, false);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         function nextSlide() {
-            goToSlide(appState.currentSlide + 1);
+            if (appState.currentSlide < 3) {
+                goToSlide(appState.currentSlide + 1);
+            }
+        }
+
+        function prevSlide() {
+            if (appState.currentSlide > 0) {
+                goToSlide(appState.currentSlide - 1);
+            }
+        }
+
+        function selectRoomAndSlide(roomName, cardEl) {
+            if (isFlipAnimating) return;
+            appState.selectedRoom = roomName;
+            lastOpenedRoomKey = roomName;
+            renderActiveRoomSlides();
+            fetchSpreadsheetData(false);
+
+            runCardFlipTransition('open', cardEl, () => {
+                setSlideImmediate(1, true);
+                window.scrollTo({ top: 0, behavior: 'instant' });
+            });
         }
 
         // =========================================================================
-        // 9. MODAL FOTO, PASSWORD SETTINGS (300603), CLOCK & NOTIFIKASI
+        // 9. MODAL FOTO, PASSWORD, PENGATURAN, JAM DIGITAL & NOTIFIKASI
         // =========================================================================
-        function openPhotoModal(src, name, meta, timeText, badgeText, colorTheme) {
+        function openPhotoModal(photoSrc, name, meta, timeLabel, badgeLabel, colorTheme = 'emerald') {
             const modal = document.getElementById('photo-modal');
-            document.getElementById('modal-photo-img').src = src;
+            const img = document.getElementById('modal-photo-img');
+            const badge = document.getElementById('modal-photo-badge');
+            const link = document.getElementById('modal-photo-link');
+
+            if (!modal || !img) return;
+            img.src = photoSrc;
+            img.onerror = function () {
+                this.onerror = null;
+                this.src = getAvatarFallback(name);
+            };
             document.getElementById('modal-photo-name').textContent = name;
             document.getElementById('modal-photo-meta').textContent = meta;
-            document.getElementById('modal-photo-time').textContent = timeText;
-            document.getElementById('modal-photo-link').href = src;
-            const badge = document.getElementById('modal-photo-badge');
-            badge.textContent = badgeText;
+            document.getElementById('modal-photo-time').textContent = timeLabel;
+            badge.textContent = badgeLabel;
             badge.className = `absolute bottom-3 left-3 px-3 py-1 rounded-full text-xs font-bold text-white shadow ${colorTheme === 'rose' ? 'bg-rose-600' : 'bg-emerald-600'}`;
+            if (link) link.href = photoSrc;
+
             modal.classList.remove('hidden');
             modal.classList.add('flex');
         }
 
         function closePhotoModal() {
             const modal = document.getElementById('photo-modal');
+            if (!modal) return;
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
@@ -1443,35 +1907,40 @@
         function requestSettingsAccess() {
             const modal = document.getElementById('password-modal');
             const input = document.getElementById('settings-password-input');
-            const errMsg = document.getElementById('password-error-msg');
-            input.value = '';
-            errMsg.classList.add('hidden');
+            const err = document.getElementById('password-error-msg');
+            if (!modal) return;
+            if (input) input.value = '';
+            if (err) err.classList.add('hidden');
             modal.classList.remove('hidden');
             modal.classList.add('flex');
-            setTimeout(() => input.focus(), 50);
+            setTimeout(() => input && input.focus(), 50);
         }
 
         function closePasswordModal() {
             const modal = document.getElementById('password-modal');
+            if (!modal) return;
             modal.classList.add('hidden');
             modal.classList.remove('flex');
         }
 
         function verifySettingsPassword(event) {
-            event.preventDefault();
-            const val = document.getElementById('settings-password-input').value.trim();
-            if (val === '300603') {
+            if (event) event.preventDefault();
+            const input = document.getElementById('settings-password-input');
+            const err = document.getElementById('password-error-msg');
+            if (input && input.value === '300603') {
                 closePasswordModal();
                 toggleSettingsModal(true);
-            } else {
-                document.getElementById('password-error-msg').classList.remove('hidden');
+            } else if (err) {
+                err.classList.remove('hidden');
             }
         }
 
         function toggleSettingsModal(show) {
             const modal = document.getElementById('settings-modal');
+            if (!modal) return;
             if (show) {
-                document.getElementById('gas-url-input').value = appState.gasWebAppUrl || '';
+                const urlInput = document.getElementById('gas-url-input');
+                if (urlInput) urlInput.value = appState.gasWebAppUrl || '';
                 modal.classList.remove('hidden');
                 modal.classList.add('flex');
             } else {
@@ -1480,11 +1949,25 @@
             }
         }
 
+        function switchDataMode(mode) {
+            if (mode === 'DEMO') {
+                const demo = getDemoData(appState.selectedDate);
+                appState.dataMode = 'DEMO';
+                processAndRenderData(demo.absensi, demo.shifts, demo.settings);
+                updateConnectionBadge();
+                showToast('Menggunakan mode data simulasi.', 'info');
+            } else {
+                fetchSpreadsheetData(true);
+            }
+            toggleSettingsModal(false);
+        }
+
         function saveGasUrl() {
-            const url = document.getElementById('gas-url-input').value.trim();
-            appState.gasWebAppUrl = url;
-            if (url) {
-                localStorage.setItem('epresensi_gas_url', url);
+            const urlInput = document.getElementById('gas-url-input');
+            const val = urlInput ? urlInput.value.trim() : '';
+            appState.gasWebAppUrl = val;
+            if (val) {
+                localStorage.setItem('epresensi_gas_url', val);
             } else {
                 localStorage.removeItem('epresensi_gas_url');
             }
@@ -1493,44 +1976,32 @@
         }
 
         function copyGasCode() {
-            const codeText = document.getElementById('gas-code-snippet').textContent;
+            const codeEl = document.getElementById('gas-code-snippet');
+            if (!codeEl) return;
             const textarea = document.createElement('textarea');
-            textarea.value = codeText;
+            textarea.value = codeEl.textContent;
             document.body.appendChild(textarea);
             textarea.select();
-            document.execCommand('copy');
-            document.body.removeChild(textarea);
-            showToast('Kode Google Apps Script berhasil disalin!', 'success');
-        }
-
-        function switchDataMode(mode) {
-            if (mode === 'DEMO') {
-                const demo = getDemoData(appState.selectedDate);
-                appState.dataMode = 'DEMO';
-                processAndRenderData(demo.absensi, demo.shifts, demo.settings);
-                updateConnectionBadge();
-                toggleSettingsModal(false);
-                showToast('Beralih ke Mode Data Simulasi Demo', 'info');
-            } else {
-                toggleSettingsModal(false);
-                fetchSpreadsheetData(true);
+            try {
+                document.execCommand('copy');
+                showToast('Kode Google Apps Script berhasil disalin!', 'success');
+            } catch (e) {
+                showToast('Gagal menyalin kode.', 'warning');
             }
+            document.body.removeChild(textarea);
         }
 
         function updateConnectionBadge() {
-            const badge = document.getElementById('connection-badge');
-            const text = document.getElementById('connection-text');
-            const desc = document.getElementById('settings-status-desc');
+            const textEl = document.getElementById('connection-text');
+            const descEl = document.getElementById('settings-status-desc');
             if (appState.dataMode === 'LIVE' || appState.dataMode === 'GAS') {
-                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800 border border-emerald-200';
-                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-emerald-500 live-dot';
-                text.textContent = appState.dataMode === 'GAS' ? 'Live Apps Script' : 'Live Absensi 1.4';
-                if (desc) desc.textContent = `Terhubung langsung ke Google Spreadsheet (${appState.dataMode}).`;
+                if (textEl) textEl.textContent = 'Live Absensi 1.4';
+                if (descEl) descEl.textContent = appState.dataMode === 'GAS'
+                    ? 'Terhubung via Google Apps Script Web App.'
+                    : 'Terhubung langsung ke Google Spreadsheet publik.';
             } else {
-                badge.className = 'inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-800 border border-amber-200';
-                badge.querySelector('span').className = 'w-2 h-2 rounded-full bg-amber-500 live-dot';
-                text.textContent = 'Mode Simulasi Demo';
-                if (desc) desc.textContent = 'Menampilkan data simulasi karena spreadsheet belum dipublikasikan ke web.';
+                if (textEl) textEl.textContent = 'Mode Simulasi';
+                if (descEl) descEl.textContent = 'Spreadsheet belum publik; menampilkan data simulasi.';
             }
         }
 
@@ -1539,12 +2010,17 @@
             const box = document.getElementById('toast-box');
             const msgEl = document.getElementById('toast-message');
             const iconEl = document.getElementById('toast-icon');
+            if (!box || !msgEl) return;
+
             msgEl.textContent = message;
-            iconEl.className = type === 'success'
-                ? 'fa-solid fa-circle-check text-emerald-400'
-                : type === 'warning'
-                    ? 'fa-solid fa-triangle-exclamation text-amber-400'
-                    : 'fa-solid fa-circle-info text-brand-400';
+            if (iconEl) {
+                iconEl.className = type === 'success'
+                    ? 'fa-solid fa-circle-check text-emerald-400'
+                    : type === 'warning'
+                        ? 'fa-solid fa-triangle-exclamation text-amber-400'
+                        : 'fa-solid fa-circle-info text-brand-400';
+            }
+
             box.classList.remove('translate-y-20', 'opacity-0');
             clearTimeout(toastTimer);
             toastTimer = setTimeout(() => {
@@ -1556,16 +2032,18 @@
             const now = new Date();
             const clockEl = document.getElementById('live-clock');
             const dateLabelEl = document.getElementById('live-date-label');
+
             if (clockEl) {
-                clockEl.textContent = now.toLocaleTimeString('id-ID', { hour12: false });
+                const hh = String(now.getHours()).padStart(2, '0');
+                const mm = String(now.getMinutes()).padStart(2, '0');
+                const ss = String(now.getSeconds()).padStart(2, '0');
+                clockEl.textContent = `${hh}:${mm}:${ss}`;
             }
+
             if (dateLabelEl) {
-                dateLabelEl.textContent = now.toLocaleDateString('id-ID', {
-                    weekday: 'long',
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric'
-                });
+                const days = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu'];
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
+                dateLabelEl.textContent = `${days[now.getDay()]}, ${now.getDate()} ${months[now.getMonth()]} ${now.getFullYear()}`;
             }
         }
 
