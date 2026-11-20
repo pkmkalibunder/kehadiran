@@ -1376,6 +1376,11 @@
                 track.style.transform = `translateX(-${clamped * 25}%)`;
             }
 
+            // Otomatis kembalikan posisi scroll ke paling atas saat berpindah slide
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+            document.documentElement.scrollTop = 0;
+            document.body.scrollTop = 0;
+
             const btnBack = document.getElementById('btn-back-rooms');
             if (btnBack) {
                 if (clamped === 0) {
